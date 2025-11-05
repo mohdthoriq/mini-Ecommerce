@@ -1,39 +1,37 @@
-import React from "react"
-import { StyleSheet, Text, View } from "react-native"
+import React from 'react';
+import { View, Text, StyleSheet, SafeAreaView } from 'react-native';
 
 const Header: React.FC = () => {
-    return (
-        <View style={styles.header}>
-            <Text style={styles.title}>Mini E-Commerce</Text>
-            <Text style={styles.subtitle}>Temukan Produk terbaik untuk anda</Text>
-        </View>
-    )
-}
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Mini Commerce</Text>
+        <Text style={styles.subtitle}>Temukan produk terbaik untuk Anda</Text>
+      </View>
+    </SafeAreaView>
+  );
+};
 
 const styles = StyleSheet.create({
+  safeArea: {
+    backgroundColor: '#FF4444', // Merah seperti Shopee
+  },
   header: {
-    backgroundColor: '#2E86DE',
-    padding: 20,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65,
-    elevation: 8,
+    backgroundColor: '#FF4444',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
   },
   title: {
-    fontSize: 28,
+    fontSize: 20,
     fontWeight: 'bold',
     color: 'white',
     textAlign: 'center',
-    marginBottom: 5,
+    marginBottom: 4,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 12,
     color: 'white',
     textAlign: 'center',
     opacity: 0.9,
@@ -41,4 +39,3 @@ const styles = StyleSheet.create({
 });
 
 export default Header;
-
