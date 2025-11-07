@@ -11,6 +11,8 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  useWindowDimensions,
+  StatusBar,
 } from 'react-native';
 import { ProductFormProps } from '../types';
 
@@ -21,10 +23,16 @@ const ProductForm: React.FC<ProductFormProps> = ({
   onSubmit,
   onCancel,
   isSubmitting,
+  screenHeight,
+  insets = { top: 0, bottom: 0, left: 0, right: 0 },
 }) => {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isLoadingImage, setIsLoadingImage] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  
+  // 🔥 HOOK RESPONSIVE
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
 
   // Check image URL when imageUrl changes
   useEffect(() => {
@@ -92,11 +100,22 @@ const ProductForm: React.FC<ProductFormProps> = ({
   };
 
   return (
-    <View style={styles.modalContainer}>
+    <View style={[
+      styles.modalContainer,
+      { 
+        paddingTop: insets.top,        // 🔥 SAFE AREA
+        paddingBottom: insets.bottom,  // 🔥 SAFE AREA
+      }
+    ]}>
+      <StatusBar 
+        barStyle="dark-content"
+        backgroundColor="#FF4444"
+        translucent={true}
+      />
       {/* Header Modal */}
       <View style={styles.modalHeader}>
         <Text style={styles.modalTitle}>Tambah Produk Baru</Text>
-        <Text style={styles.modalSubtitle}>Isi form berikut untuk menambah produk</Text>
+        <Text style={styles.modalSubtitle}>Lengkapi data produk Anda</Text>
       </View>
 
       <KeyboardAvoidingView 
@@ -105,113 +124,131 @@ const ProductForm: React.FC<ProductFormProps> = ({
       >
         <ScrollView 
           style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            isLandscape && styles.landscapeScrollContent // 🔥 RESPONSIVE
+          ]}
           showsVerticalScrollIndicator={false}
         >
           {/* Image Preview Section */}
-          {(imagePreview || isLoadingImage || imageError) && (
+          {(product.imageUrl.trim() || imagePreview || isLoadingImage || imageError) && (
             <View style={styles.imagePreviewSection}>
-              <Text style={styles.previewLabel}>Preview Gambar:</Text>
+              <Text style={styles.previewLabel}>Preview Gambar</Text>
               <View style={styles.imagePreviewContainer}>
                 {isLoadingImage ? (
                   <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#2E86DE" />
+                    <ActivityIndicator size="large" color="#FF4444" />
                     <Text style={styles.loadingText}>Memuat gambar...</Text>
                   </View>
                 ) : imagePreview ? (
-                  <Image 
-                    source={{ uri: imagePreview }} 
-                    style={styles.imagePreview}
-                    resizeMode="cover"
-                  />
+                  <View style={styles.imageSuccess}>
+                    <Image 
+                      source={{ uri: imagePreview }} 
+                      style={styles.imagePreview}
+                      resizeMode="cover"
+                    />
+                    <View style={styles.successBadge}>
+                      <Text style={styles.successText}>✓ Gambar Valid</Text>
+                    </View>
+                  </View>
                 ) : imageError ? (
                   <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>❌ {imageError}</Text>
+                    <Text style={styles.errorIcon}>⚠️</Text>
+                    <Text style={styles.errorText}>{imageError}</Text>
                   </View>
-                ) : null}
+                ) : (
+                  <View style={styles.placeholderContainer}>
+                    <Text style={styles.placeholderText}>Masukkan URL untuk preview</Text>
+                  </View>
+                )}
               </View>
             </View>
           )}
 
-          {/* Nama Produk */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Nama Produk *</Text>
-            <TextInput
-              style={[styles.input, errors.name && styles.inputError]}
-              placeholder="Masukkan nama produk"
-              placeholderTextColor="#999"
-              value={product.name}
-              onChangeText={(text) => onChange('name', text)}
-            />
-            {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
-          </View>
-
-          {/* Harga */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Harga *</Text>
-            <View style={styles.priceContainer}>
-              <Text style={styles.currencySymbol}>Rp</Text>
+          {/* Form Fields */}
+          <View style={styles.formContainer}>
+            {/* Nama Produk */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Nama Produk *</Text>
               <TextInput
-                style={[styles.input, styles.priceInput, errors.price && styles.inputError]}
-                placeholder="1000000"
+                style={[styles.input, errors.name && styles.inputError]}
+                placeholder="Contoh: iPhone 14 Pro Max 256GB"
                 placeholderTextColor="#999"
-                value={product.price}
-                onChangeText={(text) => onChange('price', text)}
-                keyboardType="numeric"
+                value={product.name}
+                onChangeText={(text) => onChange('name', text)}
+              />
+              {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
+            </View>
+
+            {/* Harga */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Harga *</Text>
+              <View style={styles.priceContainer}>
+                <View style={styles.currencySymbol}>
+                  <Text style={styles.currencyText}>Rp</Text>
+                </View>
+                <TextInput
+                  style={[styles.input, styles.priceInput, errors.price && styles.inputError]}
+                  placeholder="15000000"
+                  placeholderTextColor="#999"
+                  value={product.price}
+                  onChangeText={(text) => onChange('price', text)}
+                  keyboardType="numeric"
+                />
+              </View>
+              {errors.price && <Text style={styles.errorText}>{errors.price}</Text>}
+            </View>
+
+            {/* URL Gambar */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>URL Gambar *</Text>
+              <TextInput
+                style={[styles.input, errors.imageUrl && styles.inputError]}
+                placeholder="https://images.unsplash.com/photo-..."
+                placeholderTextColor="#999"
+                value={product.imageUrl}
+                onChangeText={handleImageUrlChange}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Text style={styles.helperText}>
+                Paste URL gambar dari Unsplash atau sumber lainnya
+              </Text>
+              {errors.imageUrl && <Text style={styles.errorText}>{errors.imageUrl}</Text>}
+            </View>
+
+            {/* Deskripsi */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Deskripsi Produk</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                placeholder="Deskripsikan produk Anda... (opsional)"
+                placeholderTextColor="#999"
+                value={product.description}
+                onChangeText={(text) => onChange('description', text)}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
               />
             </View>
-            {errors.price && <Text style={styles.errorText}>{errors.price}</Text>}
-          </View>
-
-          {/* URL Gambar */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>URL Gambar *</Text>
-            <TextInput
-              style={[styles.input, errors.imageUrl && styles.inputError]}
-              placeholder="https://example.com/gambar.jpg"
-              placeholderTextColor="#999"
-              value={product.imageUrl}
-              onChangeText={handleImageUrlChange}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <Text style={styles.helperText}>
-              Contoh: https://images.unsplash.com/photo-1546069901-ba9599a7e63c
-            </Text>
-            {errors.imageUrl && <Text style={styles.errorText}>{errors.imageUrl}</Text>}
-          </View>
-
-          {/* Deskripsi */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Deskripsi</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Masukkan deskripsi produk (opsional)"
-              placeholderTextColor="#999"
-              value={product.description}
-              onChangeText={(text) => onChange('description', text)}
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-            />
           </View>
 
           {/* Tips URL Gambar */}
           <View style={styles.tipsContainer}>
-            <Text style={styles.tipsTitle}>💡 Tips URL Gambar:</Text>
-            <Text style={styles.tipsText}>
-              • Gunakan Unsplash: https://images.unsplash.com/...
-            </Text>
-            <Text style={styles.tipsText}>
-              • Pastikan URL berakhiran .jpg, .png, atau .webp
-            </Text>
-            <Text style={styles.tipsText}>
-              • Hindari URL yang membutuhkan login/autentikasi
-            </Text>
+            <Text style={styles.tipsTitle}>💡 Tips URL Gambar yang Baik:</Text>
+            <View style={styles.tipsList}>
+              <Text style={styles.tipsText}>• Gunakan gambar dari Unsplash.com</Text>
+              <Text style={styles.tipsText}>• Pastikan URL berakhiran .jpg, .png, atau .webp</Text>
+              <Text style={styles.tipsText}>• Hindari URL yang membutuhkan login</Text>
+              <Text style={styles.tipsText}>• Ukuran gambar disarankan 400x400 pixel</Text>
+            </View>
           </View>
 
           {/* Button Group */}
-          <View style={styles.buttonGroup}>
+          <View style={[
+            styles.buttonGroup,
+            isLandscape && styles.landscapeButtonGroup // 🔥 RESPONSIVE
+          ]}>
             <TouchableOpacity 
               style={[styles.button, styles.cancelButton]} 
               onPress={onCancel}
@@ -243,25 +280,31 @@ const ProductForm: React.FC<ProductFormProps> = ({
 const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,
-    backgroundColor: 'white',
+    backgroundColor: '#FFFFFF',
   },
   modalHeader: {
-    backgroundColor: '#2E86DE',
-    padding: 20,
+    backgroundColor: '#FF4444',
+    paddingVertical: 20,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#1B6FC6',
+    borderBottomColor: '#E5E5E5',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: 'white',
+    color: '#FFFFFF',
     textAlign: 'center',
+    marginBottom: 4,
   },
   modalSubtitle: {
     fontSize: 14,
-    color: 'white',
+    color: '#FFFFFF',
     textAlign: 'center',
-    marginTop: 4,
     opacity: 0.9,
   },
   container: {
@@ -272,7 +315,23 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    padding: 20,
+    padding: 16,
+  },
+  landscapeScrollContent: {
+    paddingHorizontal: 24, // 🔥 MORE SPACE IN LANDSCAPE
+  },
+  formContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   imagePreviewSection: {
     marginBottom: 20,
@@ -280,7 +339,7 @@ const styles = StyleSheet.create({
   previewLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#2C3A47',
+    color: '#333333',
     marginBottom: 8,
   },
   imagePreviewContainer: {
@@ -288,29 +347,63 @@ const styles = StyleSheet.create({
     borderColor: '#E0E0E0',
     borderRadius: 12,
     borderStyle: 'dashed',
-    height: 150,
+    height: 160,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#FAFAFA',
+    overflow: 'hidden',
+  },
+  imageSuccess: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
   },
   imagePreview: {
     width: '100%',
     height: '100%',
-    borderRadius: 10,
+  },
+  successBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: '#00C851',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  successText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
   loadingContainer: {
     alignItems: 'center',
     justifyContent: 'center',
+    padding: 20,
   },
   loadingText: {
-    marginTop: 8,
-    color: '#666',
-    fontSize: 12,
+    marginTop: 12,
+    color: '#666666',
+    fontSize: 14,
   },
   errorContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
+    padding: 20,
+  },
+  errorIcon: {
+    fontSize: 24,
+    marginBottom: 8,
+  },
+  placeholderContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  placeholderText: {
+    color: '#999999',
+    fontSize: 14,
+    textAlign: 'center',
   },
   inputGroup: {
     marginBottom: 20,
@@ -318,31 +411,33 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#2C3A47',
+    color: '#333333',
     marginBottom: 8,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#DDD',
+    borderColor: '#DDDDDD',
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
-    backgroundColor: 'white',
-    color: '#2C3A47',
+    backgroundColor: '#FFFFFF',
+    color: '#333333',
   },
   priceContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   currencySymbol: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2C3A47',
-    marginRight: 8,
-    backgroundColor: '#F0F0F0',
-    paddingHorizontal: 12,
+    backgroundColor: '#FF4444',
+    paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 8,
+    marginRight: 12,
+  },
+  currencyText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
   priceInput: {
     flex: 1,
@@ -352,70 +447,82 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   inputError: {
-    borderColor: '#E74C3C',
-    backgroundColor: '#FDEDED',
+    borderColor: '#FF4444',
+    backgroundColor: '#FFF5F5',
   },
   errorText: {
-    color: '#E74C3C',
-    fontSize: 12,
-    marginTop: 4,
+    color: '#FF4444',
+    fontSize: 14,
+    marginTop: 6,
     fontWeight: '500',
   },
   helperText: {
     fontSize: 12,
-    color: '#666',
-    marginTop: 4,
+    color: '#666666',
+    marginTop: 6,
     fontStyle: 'italic',
   },
   tipsContainer: {
-    backgroundColor: '#E3F2FD',
+    backgroundColor: '#F8F9FA',
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 12,
     marginBottom: 20,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF4444',
   },
   tipsTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#1565C0',
+    color: '#333333',
     marginBottom: 8,
   },
+  tipsList: {
+    gap: 4,
+  },
   tipsText: {
-    fontSize: 12,
-    color: '#1976D2',
-    marginBottom: 4,
+    fontSize: 14,
+    color: '#666666',
+    lineHeight: 20,
   },
   buttonGroup: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 10,
-    marginBottom: 30,
-    gap: 10,
+    gap: 12,
+    marginBottom: 20,
+  },
+  landscapeButtonGroup: {
+    marginBottom: 30, // 🔥 EXTRA SPACE IN LANDSCAPE
   },
   button: {
     flex: 1,
-    paddingVertical: 15,
+    paddingVertical: 16,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 50,
+    minHeight: 52,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   cancelButton: {
-    backgroundColor: '#95A5A6',
+    backgroundColor: '#666666',
   },
   submitButton: {
-    backgroundColor: '#2E86DE',
+    backgroundColor: '#FF4444',
   },
   disabledButton: {
-    backgroundColor: '#B2BEC3',
+    backgroundColor: '#CCCCCC',
     opacity: 0.6,
   },
   cancelButtonText: {
-    color: 'white',
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
   },
   submitButtonText: {
-    color: 'white',
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
   },

@@ -21,20 +21,41 @@ export interface FormErrors {
     description? : string;
 }
 
-export interface ProductFormProps {
-    product: NewProduct;
-    errors: FormErrors;
-    onChange: (field: keyof NewProduct, value: string) => void;
-    onSubmit: () => void;
-    onCancel:() => void;
-    isSubmitting: boolean;
+export type ErrorsState = {
+  [key in keyof NewProduct]?: string;
+};
+
+// 🔥 UPDATE: ProductCardProps dengan props responsive
+export interface ProductCardProps {
+  product: Product;
+  cardWidth: number;           // Tambah prop ini
+  isLandscape: boolean;        // Tambah prop ini
 }
 
-export interface ProductCardProps {
-    product: Product;
+// 🔥 UPDATE: HeaderProps dengan props responsive
+export interface HeaderProps {
+  isLandscape?: boolean;       // Tambah prop ini  
+  screenWidth?: number;        // Tambah prop ini
 }
 
 export interface AddProductButtonProps {
-    onPress: () => void;
+  isLandscape?: boolean;       // Tambah prop ini
+  onPress: () => void;
+}
+
+export interface ProductFormProps {
+  product: NewProduct;
+  errors: FormErrors;
+  onChange: (field: keyof NewProduct, value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+  isSubmitting: boolean;
+  screenHeight?: number;
+  insets?: {
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
+  };
 }
 

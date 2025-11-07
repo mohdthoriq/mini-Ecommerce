@@ -1,36 +1,36 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { AddProductButtonProps } from '../types';
 
 const AddProductButton: React.FC<AddProductButtonProps> = ({ onPress }) => {
-    return (
-        <TouchableOpacity style={styles.button} onPress={onPress}>
-            <Text style={styles.buttonText}>Tambah Produk</Text>
-        </TouchableOpacity>
-    )
-}
+  return (
+    <TouchableOpacity style={styles.button} onPress={onPress}>
+      <Text style={styles.buttonText}>+ Tambah Produk Baru</Text>
+    </TouchableOpacity>
+  );
+};
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: '#2E86DE',
-    paddingVertical: 16,
+    backgroundColor: '#FF4444',
+    paddingVertical: 14,
     paddingHorizontal: 24,
-    borderRadius: 25,
+    borderRadius: 8,
     marginHorizontal: 16,
     marginVertical: 16,
-    shadowColor: '#2E86DE',
+    shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 2,
     },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65,
-    elevation: 8,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
     alignItems: 'center',
   },
   buttonText: {
     color: 'white',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
   },
 });
