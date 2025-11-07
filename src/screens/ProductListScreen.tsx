@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   FlatList,
@@ -7,9 +7,11 @@ import {
   StyleSheet,
   TouchableWithoutFeedback,
   Keyboard,
+  useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { initialProducts } from '../data/initialProducts';
-import { Product } from '../types';
+import { Product, NewProduct, ErrorsState } from '../types';
 import Header from '../components/Header';
 import ProductCard from '../components/ProductCard';
 import AddProductButton from '../components/AddProductButton';
@@ -20,26 +22,29 @@ const ProductListScreen: React.FC = () => {
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [isModalVisible, setIsModalVisible] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [newProduct, setNewProduct] = useState({
+  const [newProduct, setNewProduct] = useState<NewProduct>({
     id: '',
     name: '',
     price: '',
     imageUrl: '',
     description: ''
   });
+  const [errors, setErrors] = useState<ErrorsState>({});
 
-  interface FormErrors {
-    name?: string;
-    price?: string;
-    imageUrl?: string;
-  }
-  const [errors, setErrors] = useState<FormErrors>({});
+  // 🔥 HOOKS RESPONSIVE
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
-  const handleAddProduct = (): void => {
+  // Responsive layout calculations
+  const isLandscape = width > height;
+  const numColumns = isLandscape ? 3 : 2;
+  const cardWidth = (width - (16 * 2) - (8 * (numColumns - 1))) / numColumns;
+
+  const handleAddProduct = useCallback((): void => {
     setIsModalVisible(true);
-  };
+  }, []);
 
-  const handleCloseModal = (): void => {
+  const handleCloseModal = useCallback((): void => {
     setIsModalVisible(false);
     setNewProduct({
       id: '',
@@ -50,24 +55,24 @@ const ProductListScreen: React.FC = () => {
     });
     setErrors({});
     Keyboard.dismiss();
-  };
+  }, []);
 
-  const handleInputChange = (field: keyof typeof newProduct, value: string): void => {
+  const handleInputChange = useCallback((field: keyof NewProduct, value: string): void => {
     setNewProduct(prev => ({
       ...prev,
       [field]: value
     }));
     
-    // Check if the field is a valid key of FormErrors and if an error exists for it.
-    if (field in errors && errors[field as keyof FormErrors]) {
-      setErrors(prev => ({
-        ...prev,
-        [field]: undefined
-      }));
+    if (errors[field]) {
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
     }
-  };
+  }, [errors]);
 
-  const handleSubmit = (): void => {
+  const handleSubmit = useCallback((): void => {
     const validationErrors = validationForm(newProduct);
     
     if (Object.keys(validationErrors).length > 0) {
@@ -94,43 +99,75 @@ const ProductListScreen: React.FC = () => {
         [{ text: 'OK' }]
       );
     }, 1000);
-  };
+  }, [newProduct, handleCloseModal]);
 
-  const renderProductItem = ({ item }: { item: Product }) => (
-    <ProductCard product={item} />
-  );
+  // 🔥 PERBAIKAN 1: Render ProductCard dengan props yang benar
+  const renderProductItem = useCallback(({ item }: { item: Product }) => (
+    <ProductCard 
+      product={item} 
+      cardWidth={cardWidth}
+      isLandscape={isLandscape}
+    />
+  ), [cardWidth, isLandscape]);
+
+  const keyExtractor = useCallback((item: Product) => item.id, []);
+
+  // 🔥 PERBAIKAN 2: Render Header dengan props yang benar
+ const renderHeader: React.FC = useCallback(() => (
+    <Header 
+      isLandscape={isLandscape}
+      screenWidth={width}
+    />
+  ), [isLandscape, width]);
+
+  const renderFooter: React.FC = useCallback(() => (
+    <AddProductButton 
+      onPress={handleAddProduct}
+      isLandscape={isLandscape}
+    />
+  ), [isLandscape, handleAddProduct]);
+
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View style={styles.container}>
+      <View style={[
+        styles.container,
+        { 
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        }
+      ]}>
         <FlatList
           data={products}
           renderItem={renderProductItem}
-          keyExtractor={(item) => item.id}
+          keyExtractor={keyExtractor}
           showsVerticalScrollIndicator={false}
-          ListHeaderComponent={<Header />}
-          ListFooterComponent={<AddProductButton onPress={handleAddProduct} />}
+          ListHeaderComponent={renderHeader} // 🔥 Gunakan function yang sudah diperbaiki
+          ListFooterComponent={renderFooter} // 🔥 Gunakan function yang sudah diperbaiki
           contentContainerStyle={styles.listContent}
-          numColumns={2} // Grid layout
+          numColumns={numColumns}
           columnWrapperStyle={styles.columnWrapper}
+          key={numColumns}
         />
 
         <Modal
           visible={isModalVisible}
           animationType="slide"
-          presentationStyle="pageSheet"
+          presentationStyle={isLandscape ? "formSheet" : "pageSheet"}
           onRequestClose={handleCloseModal}
         >
-          <View style={styles.modalContainer}>
-            <ProductForm
-              product={newProduct}
-              errors={errors}
-              onChange={handleInputChange}
-              onSubmit={handleSubmit}
-              onCancel={handleCloseModal}
-              isSubmitting={isSubmitting}
-            />
-          </View>
+          <ProductForm
+            product={newProduct}
+            errors={errors}
+            onChange={handleInputChange}
+            onSubmit={handleSubmit}
+            onCancel={handleCloseModal}
+            isSubmitting={isSubmitting}
+            screenHeight={height}
+            insets={insets}
+          />
         </Modal>
       </View>
     </TouchableWithoutFeedback>
@@ -140,7 +177,7 @@ const ProductListScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fdfafaff', // Light background seperti marketplace
+    backgroundColor: '#F8F9FA',
   },
   listContent: {
     paddingBottom: 20,
@@ -148,10 +185,6 @@ const styles = StyleSheet.create({
   columnWrapper: {
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: 'white',
   },
 });
 

@@ -11,6 +11,8 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  useWindowDimensions,
+  StatusBar,
 } from 'react-native';
 import { ProductFormProps } from '../types';
 
@@ -21,10 +23,16 @@ const ProductForm: React.FC<ProductFormProps> = ({
   onSubmit,
   onCancel,
   isSubmitting,
+  screenHeight,
+  insets = { top: 0, bottom: 0, left: 0, right: 0 },
 }) => {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isLoadingImage, setIsLoadingImage] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  
+  // 🔥 HOOK RESPONSIVE
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
 
   // Check image URL when imageUrl changes
   useEffect(() => {
@@ -92,7 +100,18 @@ const ProductForm: React.FC<ProductFormProps> = ({
   };
 
   return (
-    <View style={styles.modalContainer}>
+    <View style={[
+      styles.modalContainer,
+      { 
+        paddingTop: insets.top,        // 🔥 SAFE AREA
+        paddingBottom: insets.bottom,  // 🔥 SAFE AREA
+      }
+    ]}>
+      <StatusBar 
+        barStyle="dark-content"
+        backgroundColor="#FF4444"
+        translucent={true}
+      />
       {/* Header Modal */}
       <View style={styles.modalHeader}>
         <Text style={styles.modalTitle}>Tambah Produk Baru</Text>
@@ -105,7 +124,10 @@ const ProductForm: React.FC<ProductFormProps> = ({
       >
         <ScrollView 
           style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            isLandscape && styles.landscapeScrollContent // 🔥 RESPONSIVE
+          ]}
           showsVerticalScrollIndicator={false}
         >
           {/* Image Preview Section */}
@@ -223,7 +245,10 @@ const ProductForm: React.FC<ProductFormProps> = ({
           </View>
 
           {/* Button Group */}
-          <View style={styles.buttonGroup}>
+          <View style={[
+            styles.buttonGroup,
+            isLandscape && styles.landscapeButtonGroup // 🔥 RESPONSIVE
+          ]}>
             <TouchableOpacity 
               style={[styles.button, styles.cancelButton]} 
               onPress={onCancel}
@@ -291,6 +316,9 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     padding: 16,
+  },
+  landscapeScrollContent: {
+    paddingHorizontal: 24, // 🔥 MORE SPACE IN LANDSCAPE
   },
   formContainer: {
     backgroundColor: '#FFFFFF',
@@ -461,6 +489,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
     marginBottom: 20,
+  },
+  landscapeButtonGroup: {
+    marginBottom: 30, // 🔥 EXTRA SPACE IN LANDSCAPE
   },
   button: {
     flex: 1,

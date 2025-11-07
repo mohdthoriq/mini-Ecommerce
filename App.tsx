@@ -1,13 +1,18 @@
 import React from 'react';
-import { SafeAreaView, StatusBar } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import ProductListScreen from './src/screens/ProductListScreen';
+import { StatusBar } from 'react-native';
 
 const App: React.FC = () => {
   return (
-    <SafeAreaView style={{ flex: 1 }}>
-      <StatusBar barStyle="dark-content" />
+    <SafeAreaProvider>
+      <StatusBar 
+        barStyle="dark-content" 
+        backgroundColor="#FF4444" 
+        translucent={true}
+      />
       <ProductListScreen />
-    </SafeAreaView>
+    </SafeAreaProvider>
   );
 };
 
