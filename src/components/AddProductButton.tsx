@@ -12,7 +12,7 @@ const AddProductButton: React.FC<AddProductButtonProps> = ({ onPress }) => {
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: '#FF4444',
+    backgroundColor: '#2e7d32',
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 8,
