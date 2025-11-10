@@ -13,7 +13,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { initialProducts } from '../../data/initialProducts';
 import { Product, NewProduct, ErrorsState } from '../../types';
-import Header from '../../components/Header';
 import ProductCard from '../../components/ProductCard';
 import AddProductButton from '../../components/AddProductButton';
 import ProductForm from '../../components/ProductForm';
@@ -58,7 +57,8 @@ const ProductListScreen: React.FC = () => {
     Keyboard.dismiss();
   }, []);
 
-  const handleInputChange = useCallback((field: keyof NewProduct, value: string): void => {
+  // 🔥 PERBAIKAN: Type field sebagai keyof Omit<NewProduct, 'id'>
+  const handleInputChange = useCallback((field: keyof Omit<NewProduct, 'id'>, value: string): void => {
     setNewProduct(prev => ({
       ...prev,
       [field]: value
@@ -132,13 +132,13 @@ const ProductListScreen: React.FC = () => {
         </View>
         <View style={styles.statItem}>
           <Text style={styles.statNumber}>
-            {products.filter(p => p.price < 50).length}
+            {products.filter(p => p.price < 500000).length}
           </Text>
           <Text style={styles.statLabel}>Affordable</Text>
         </View>
         <View style={styles.statItem}>
           <Text style={styles.statNumber}>
-            {products.filter(p => p.price >= 50).length}
+            {products.filter(p => p.price >= 500000).length}
           </Text>
           <Text style={styles.statLabel}>Premium</Text>
         </View>

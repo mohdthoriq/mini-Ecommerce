@@ -8,7 +8,6 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ isLandscape = false, screenWidth }) => {
-  // 🔥 HOOK SAFE AREA
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
 
@@ -18,7 +17,7 @@ const Header: React.FC<HeaderProps> = ({ isLandscape = false, screenWidth }) => 
     <View style={[
       styles.header,
       { 
-        paddingTop: insets.top + 16, // 🔥 PADDING UNTUK SAFE AREA
+        paddingTop: insets.top + 16, 
         paddingBottom: isLandscape ? 12 : 16,
       }
     ]}>

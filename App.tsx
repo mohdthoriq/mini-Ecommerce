@@ -3,8 +3,8 @@
 // import ProductListScreen from './src/screens/dashboard/ProductListScreen';
 // import { StatusBar } from 'react-native';
 
-import RootNavigator from "./src/routes/RootNavigator";
-import React from "react";
+// import RootNavigator from "./src/routes/RootNavigator";
+// import React from "react";
 
 
 // const App: React.FC = () => {
@@ -22,10 +22,19 @@ import React from "react";
 
 // export default App;
 
+// export default function App() {
+//   return (
+//     <>
+//       <RootNavigator />
+//     </>
+//   )
+// }
+
+
+
+import React from 'react';
+import Navigation from './src/routes';
+
 export default function App() {
-  return (
-    <>
-      <RootNavigator />
-    </>
-  )
+  return <Navigation />;
 }
