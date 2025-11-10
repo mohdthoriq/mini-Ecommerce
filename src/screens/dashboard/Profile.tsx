@@ -28,7 +28,7 @@ const Profile = () => {
                         </View>
                         <View style={styles.verifiedBadge}>
                             <Text style={styles.verifiedText}>✓</Text>
-                        </View>
+                        </View>                        
                     </View>
                     
                     <Text style={styles.userName}>John Smith</Text>
@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
         bottom: 5,
         right: 5,
         width: 24,
-        height: 24,
+        height: 24,        
         borderRadius: 12,
         backgroundColor: '#4caf50',
         justifyContent: 'center',

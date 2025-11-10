@@ -103,19 +103,19 @@ const ProductForm: React.FC<ProductFormProps> = ({
     <View style={[
       styles.modalContainer,
       { 
-        paddingTop: insets.top,        // 🔥 SAFE AREA
-        paddingBottom: insets.bottom,  // 🔥 SAFE AREA
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom,
       }
     ]}>
       <StatusBar 
-        barStyle="dark-content"
-        backgroundColor="#FF4444"
+        barStyle="light-content"
+        backgroundColor="#2e7d32"
         translucent={true}
       />
       {/* Header Modal */}
       <View style={styles.modalHeader}>
-        <Text style={styles.modalTitle}>Tambah Produk Baru</Text>
-        <Text style={styles.modalSubtitle}>Lengkapi data produk Anda</Text>
+        <Text style={styles.modalTitle}>🌱 Tambah Produk Baru</Text>
+        <Text style={styles.modalSubtitle}>Lengkapi data produk sustainable Anda</Text>
       </View>
 
       <KeyboardAvoidingView 
@@ -126,7 +126,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
           style={styles.scrollView}
           contentContainerStyle={[
             styles.scrollContent,
-            isLandscape && styles.landscapeScrollContent // 🔥 RESPONSIVE
+            isLandscape && styles.landscapeScrollContent
           ]}
           showsVerticalScrollIndicator={false}
         >
@@ -137,7 +137,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
               <View style={styles.imagePreviewContainer}>
                 {isLoadingImage ? (
                   <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#FF4444" />
+                    <ActivityIndicator size="large" color="#4caf50" />
                     <Text style={styles.loadingText}>Memuat gambar...</Text>
                   </View>
                 ) : imagePreview ? (
@@ -172,7 +172,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
               <Text style={styles.label}>Nama Produk *</Text>
               <TextInput
                 style={[styles.input, errors.name && styles.inputError]}
-                placeholder="Contoh: iPhone 14 Pro Max 256GB"
+                placeholder="Contoh: EcoPhone X Refurbished"
                 placeholderTextColor="#999"
                 value={product.name}
                 onChangeText={(text) => onChange('name', text)}
@@ -222,7 +222,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
               <Text style={styles.label}>Deskripsi Produk</Text>
               <TextInput
                 style={[styles.input, styles.textArea]}
-                placeholder="Deskripsikan produk Anda... (opsional)"
+                placeholder="Deskripsikan keunggulan eco-friendly produk Anda..."
                 placeholderTextColor="#999"
                 value={product.description}
                 onChangeText={(text) => onChange('description', text)}
@@ -247,7 +247,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
           {/* Button Group */}
           <View style={[
             styles.buttonGroup,
-            isLandscape && styles.landscapeButtonGroup // 🔥 RESPONSIVE
+            isLandscape && styles.landscapeButtonGroup
           ]}>
             <TouchableOpacity 
               style={[styles.button, styles.cancelButton]} 
@@ -280,30 +280,30 @@ const ProductForm: React.FC<ProductFormProps> = ({
 const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#f0f7f0',
   },
   modalHeader: {
-    backgroundColor: '#FF4444',
+    backgroundColor: '#2e7d32',
     paddingVertical: 20,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
+    borderBottomColor: '#d4e8d4',
+    shadowColor: '#2e7d32',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#ffffff',
     textAlign: 'center',
     marginBottom: 4,
   },
   modalSubtitle: {
     fontSize: 14,
-    color: '#FFFFFF',
+    color: '#e8f5e8',
     textAlign: 'center',
     opacity: 0.9,
   },
@@ -318,20 +318,20 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   landscapeScrollContent: {
-    paddingHorizontal: 24, // 🔥 MORE SPACE IN LANDSCAPE
+    paddingHorizontal: 24,
   },
   formContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    backgroundColor: '#ffffff',
+    borderRadius: 15,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#2e7d32',
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    shadowRadius: 8,
+    elevation: 5,
+    borderLeftWidth: 4,
+    borderLeftColor: '#4caf50',
   },
   imagePreviewSection: {
     marginBottom: 20,
@@ -339,18 +339,18 @@ const styles = StyleSheet.create({
   previewLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333333',
+    color: '#2e7d32',
     marginBottom: 8,
   },
   imagePreviewContainer: {
     borderWidth: 2,
-    borderColor: '#E0E0E0',
+    borderColor: '#d4e8d4',
     borderRadius: 12,
     borderStyle: 'dashed',
     height: 160,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#f8fdf8',
     overflow: 'hidden',
   },
   imageSuccess: {
@@ -366,13 +366,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 12,
     right: 12,
-    backgroundColor: '#00C851',
+    backgroundColor: '#4caf50',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
   },
   successText: {
-    color: '#FFFFFF',
+    color: '#ffffff',
     fontSize: 12,
     fontWeight: '600',
   },
@@ -383,8 +383,9 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 12,
-    color: '#666666',
+    color: '#4caf50',
     fontSize: 14,
+    fontWeight: '500',
   },
   errorContainer: {
     alignItems: 'center',
@@ -395,15 +396,22 @@ const styles = StyleSheet.create({
     fontSize: 24,
     marginBottom: 8,
   },
+  errorText: {
+    color: '#ff6b6b',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
   placeholderContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
   },
   placeholderText: {
-    color: '#999999',
+    color: '#4caf50',
     fontSize: 14,
     textAlign: 'center',
+    opacity: 0.7,
   },
   inputGroup: {
     marginBottom: 20,
@@ -411,33 +419,43 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333333',
+    color: '#2e7d32',
     marginBottom: 8,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#DDDDDD',
+    borderColor: '#d4e8d4',
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
-    backgroundColor: '#FFFFFF',
-    color: '#333333',
+    backgroundColor: '#ffffff',
+    color: '#2e7d32',
+    shadowColor: '#2e7d32',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   priceContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   currencySymbol: {
-    backgroundColor: '#FF4444',
+    backgroundColor: '#4caf50',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 8,
     marginRight: 12,
+    shadowColor: '#4caf50',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   currencyText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#ffffff',
   },
   priceInput: {
     flex: 1,
@@ -447,33 +465,33 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   inputError: {
-    borderColor: '#FF4444',
-    backgroundColor: '#FFF5F5',
-  },
-  errorText: {
-    color: '#FF4444',
-    fontSize: 14,
-    marginTop: 6,
-    fontWeight: '500',
+    borderColor: '#ff6b6b',
+    backgroundColor: '#fff5f5',
   },
   helperText: {
     fontSize: 12,
-    color: '#666666',
+    color: '#4caf50',
     marginTop: 6,
     fontStyle: 'italic',
+    opacity: 0.8,
   },
   tipsContainer: {
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#e8f5e8',
     padding: 16,
     borderRadius: 12,
     marginBottom: 20,
     borderLeftWidth: 4,
-    borderLeftColor: '#FF4444',
+    borderLeftColor: '#4caf50',
+    shadowColor: '#2e7d32',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
   },
   tipsTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#333333',
+    color: '#2e7d32',
     marginBottom: 8,
   },
   tipsList: {
@@ -481,7 +499,7 @@ const styles = StyleSheet.create({
   },
   tipsText: {
     fontSize: 14,
-    color: '#666666',
+    color: '#388e3c',
     lineHeight: 20,
   },
   buttonGroup: {
@@ -491,38 +509,40 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   landscapeButtonGroup: {
-    marginBottom: 30, // 🔥 EXTRA SPACE IN LANDSCAPE
+    marginBottom: 30,
   },
   button: {
     flex: 1,
     paddingVertical: 16,
-    borderRadius: 8,
+    borderRadius: 25,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 52,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowColor: '#2e7d32',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 6,
   },
   cancelButton: {
-    backgroundColor: '#666666',
+    backgroundColor: '#ffffff',
+    borderWidth: 2,
+    borderColor: '#4caf50',
   },
   submitButton: {
-    backgroundColor: '#FF4444',
+    backgroundColor: '#4caf50',
   },
   disabledButton: {
-    backgroundColor: '#CCCCCC',
+    backgroundColor: '#cccccc',
     opacity: 0.6,
   },
   cancelButtonText: {
-    color: '#FFFFFF',
+    color: '#4caf50',
     fontSize: 16,
     fontWeight: 'bold',
   },
   submitButtonText: {
-    color: '#FFFFFF',
+    color: '#ffffff',
     fontSize: 16,
     fontWeight: 'bold',
   },
