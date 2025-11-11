@@ -1,56 +1,60 @@
 import React from 'react';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
-import { useWindowDimensions } from 'react-native';
-import Popular from '../screens/categories/Popular';
-import New from '../screens/categories/New';
-import Discount from '../screens/categories/Discount';
-import Electronics from '../screens/categories/Electronics';
-import Clothing from '../screens/categories/Clothing';
-import Food from '../screens/categories/Food';
-import Automotive from '../screens/categories/Automotive';
-import Entertainment from '../screens/categories/Entertainment';
-import Baby from '../screens/categories/Baby';
+import { TopTabsParamList } from '../types';
+import PopularScreen from '../screens/categories/Popular';
+import NewScreen from '../screens/categories/New';
+import DiscountScreen from '../screens/categories/Discount';
+import ElectronicsScreen from '../screens/categories/Electronics';
+import ClothingScreen from '../screens/categories/Clothing';
+import FoodScreen from '../screens/categories/Food';
+import AutomotiveScreen from '../screens/categories/Automotive';
+import EntertainmentScreen from '../screens/categories/Entertainment';
+import BabyScreen from '../screens/categories/Baby';
+import AuthGuard from './AuthGuard';
 
-const TopTabs = createMaterialTopTabNavigator();
+const Tab = createMaterialTopTabNavigator<TopTabsParamList>();
 
-export default function TopTabsNavigator() {
-  const { width } = useWindowDimensions();
-
+const TopTabsNavigator = () => {
   return (
-    <TopTabs.Navigator
+    <Tab.Navigator
       screenOptions={{
-        tabBarActiveTintColor: '#2196F3',
-        tabBarInactiveTintColor: '#666',
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
-          textTransform: 'none',
-          includeFontPadding: false,
-        },
-        tabBarIndicatorStyle: {
-          backgroundColor: '#2196F3',
-          height: 3,
+        tabBarScrollEnabled: true,
+        tabBarItemStyle: { 
+          width: 'auto',
+          paddingHorizontal: 16,
         },
         tabBarStyle: {
-          backgroundColor: '#ffffff',
+          backgroundColor: '#f8f9fa',
           elevation: 0,
           shadowOpacity: 0,
         },
-        tabBarScrollEnabled: true,
-        // 🔥 HAPUS tabBarItemStyle DENGAN FIXED WIDTH
-        lazy: true,
-        lazyPreloadDistance: 1,
+        tabBarLabelStyle: {
+          fontSize: 14,
+          fontWeight: '600',
+          textTransform: 'none',
+        },
+        tabBarIndicatorStyle: {
+          backgroundColor: '#2e7d32',
+          height: 3,
+        },
+        tabBarActiveTintColor: '#2e7d32',
+        tabBarInactiveTintColor: '#666666',
       }}
     >
-      <TopTabs.Screen name="Popular" component={Popular} options={{ title: 'Populer' }} />
-      <TopTabs.Screen name="New" component={New} options={{ title: 'Terbaru' }} />
-      <TopTabs.Screen name="Discount" component={Discount} options={{ title: '🔥 Diskon' }} />
-      <TopTabs.Screen name="Electronics" component={Electronics} options={{ title: 'Elektronik' }} />
-      <TopTabs.Screen name="Clothing" component={Clothing} options={{ title: 'Pakaian' }} />
-      <TopTabs.Screen name="Food" component={Food} options={{ title: 'Makanan' }} />
-      <TopTabs.Screen name="Automotive" component={Automotive} options={{ title: 'Otomotif' }} />
-      <TopTabs.Screen name="Entertainment" component={Entertainment} options={{ title: 'Hiburan' }} />
-      <TopTabs.Screen name="Baby" component={Baby} options={{ title: 'Bayi' }} />
-    </TopTabs.Navigator>
+      <Tab.Screen name="Popular" component={PopularScreen} />
+      <Tab.Screen name="New" component={NewScreen} />
+      <Tab.Screen name="Discount" component={DiscountScreen} />
+      <Tab.Screen name="Electronics" component={ElectronicsScreen} />
+      <Tab.Screen name="Clothing" component={ClothingScreen} />
+      <Tab.Screen name="Food" component={FoodScreen} />
+      <Tab.Screen name="Automotive" component={AutomotiveScreen} />
+      <Tab.Screen name="Entertainment" component={EntertainmentScreen} />
+      <Tab.Screen 
+        name="Baby" 
+        component={AuthGuard(BabyScreen)}
+      />
+    </Tab.Navigator>
   );
-}
+};
+
+export default TopTabsNavigator;

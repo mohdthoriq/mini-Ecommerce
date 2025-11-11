@@ -3,11 +3,14 @@ import {
   View,
   Text,
   StyleSheet,
+  TouchableOpacity,
   FlatList,
+  Image,
   SafeAreaView,
-  useWindowDimensions,
 } from 'react-native';
-import ProductCard from '../../components/ProductCard';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { HomeStackParamList } from '../../types';
 import { initialProducts } from '../../data/initialProducts';
 
 export default function Food() {
@@ -19,57 +22,52 @@ export default function Food() {
     product.name.toLowerCase().includes('snack')
   );
 
-  const { width } = useWindowDimensions();
-  const numColumns = 2;
-  const cardWidth = (width - (16 * 2) - (12 * (numColumns - 1))) / numColumns;
+  const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
+  const handleProductPress = (productId: string) => {
+    navigation.navigate('ProductDetail', { productId });
+  };
 
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>🍎 Makanan</Text>
-          <Text style={styles.subtitle}>
-            {foodProducts.length} produk makanan sehat & organik
-          </Text>
-        </View>
-
-        <FlatList
-          data={foodProducts}
-          renderItem={({ item }) => (
-            <ProductCard
-              product={item}
-              cardWidth={cardWidth}
-              isLandscape={false}
-            />
-          )}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-          numColumns={numColumns}
-          columnWrapperStyle={styles.columnWrapper}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>Belum ada produk makanan</Text>
+    <View style={styles.container}>
+      <Text style={styles.title}>🍎 Makanan</Text>
+      <Text style={styles.subtitle}>
+        {foodProducts.length} produk makanan sehat & organik
+      </Text>
+      
+      <FlatList
+        data={foodProducts}
+        renderItem={({ item }) => (
+          <TouchableOpacity 
+            style={styles.productCard}
+            onPress={() => handleProductPress(item.id)}
+          >
+            <Image source={{ uri: item.image }} style={styles.productImage} />
+            <View style={styles.productInfo}>
+              <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
+              <Text style={styles.productPrice}>${item.price.toLocaleString()}</Text>
+              <Text style={styles.productCategory}>{item.category}</Text>
             </View>
-          }
-        />
-      </View>
-    </SafeAreaView>
+          </TouchableOpacity>
+        )}
+        keyExtractor={(item) => item.id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>Belum ada produk makanan</Text>
+          </View>
+        }
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f0f7f0',
-  },
   container: {
     flex: 1,
+    backgroundColor: '#f8f9fa',
     padding: 16,
-  },
-  header: {
-    marginBottom: 20,
   },
   title: {
     fontSize: 24,
@@ -79,18 +77,53 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 14,
-    color: '#4caf50',
-    opacity: 0.8,
+    color: '#666',
+    marginBottom: 20,
   },
   listContent: {
     paddingBottom: 20,
   },
-   columnWrapper: {
-    justifyContent: 'space-between', // 🔥 RATA KIRI-KANAN
-    marginBottom: 12, // 🔥 SPACING ANTAR ROW
+  productCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    marginBottom: 16,
+    padding: 12,
+    flexDirection: 'row',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
   },
-  cardWrapper: {
-    // 🔥 WRAPPER UNTUK CONSISTENT SPACING
+  productImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+  },
+  productInfo: {
+    flex: 1,
+    marginLeft: 12,
+    justifyContent: 'center',
+  },
+  productName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#2e7d32',
+    marginBottom: 4,
+  },
+  productPrice: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2e7d32',
+    marginBottom: 4,
+  },
+  productCategory: {
+    fontSize: 12,
+    color: '#666',
+    textTransform: 'capitalize',
   },
   emptyContainer: {
     alignItems: 'center',
@@ -99,7 +132,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#4caf50',
-    opacity: 0.7,
+    color: '#666',
   },
 });

@@ -1,73 +1,63 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  SafeAreaView,
-  useWindowDimensions,
-} from 'react-native';
-import ProductCard from '../../components/ProductCard';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { HomeStackParamList } from '../../types';
 import { initialProducts } from '../../data/initialProducts';
 
-export default function Popular() {
-  const popularProducts = initialProducts.filter(product => product.isPopular);
-  
-  // 🔥 TAMBAHKAN HOOK UNTUK RESPONSIVE LAYOUT
-  const { width } = useWindowDimensions();
-  const numColumns = 2;
-  const cardWidth = (width - (16 * 2) - (12 * (numColumns - 1))) / numColumns;
+type PopularScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList>;
+
+const PopularScreen = () => {
+  const navigation = useNavigation<PopularScreenNavigationProp>();
+
+  const popularProducts = initialProducts.filter(product => 
+    product.category === 'popular' || product.price < 300000
+  );
+
+  const handleProductPress = (productId: string) => {
+    navigation.navigate('ProductDetail', { productId });
+  };
+
+  const renderProductItem = ({ item }: { item: any }) => (
+    <TouchableOpacity 
+      style={styles.productCard}
+      onPress={() => handleProductPress(item.id)}
+    >
+      <Image source={{ uri: item.image }} style={styles.productImage} />
+      <View style={styles.productInfo}>
+        <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
+        <Text style={styles.productPrice}>${item.price.toLocaleString()}</Text>
+        <Text style={styles.productCategory}>{item.category}</Text>
+      </View>
+      {item.isNew && (
+        <View style={styles.newBadge}>
+          <Text style={styles.newBadgeText}>NEW</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>🔥 Produk Populer</Text>
-          <Text style={styles.subtitle}>
-            {popularProducts.length} produk paling diminati
-          </Text>
-        </View>
-
-        {/* 🔥 PERBAIKAN: FLATLIST DENGAN GRID 2 KOLOM */}
-        <FlatList
-          data={popularProducts}
-          renderItem={({ item }) => (
-            <View style={styles.cardWrapper}>
-              <ProductCard 
-                product={item}
-                cardWidth={cardWidth} // 🔥 GUNAKAN cardWidth YANG DIHITUNG
-                isLandscape={false}
-              />
-            </View>
-          )}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-          numColumns={numColumns} // 🔥 SET 2 KOLOM
-          columnWrapperStyle={styles.columnWrapper}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>Belum ada produk populer</Text>
-            </View>
-          }
-        />
-      </View>
-    </SafeAreaView>
+    <View style={styles.container}>
+      <Text style={styles.title}>🔥 Popular Products</Text>
+      <Text style={styles.subtitle}>Most loved by our customers</Text>
+      
+      <FlatList
+        data={popularProducts}
+        renderItem={renderProductItem}
+        keyExtractor={(item) => item.id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
+      />
+    </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f0f7f0',
-  },
   container: {
     flex: 1,
-    paddingHorizontal: 16, // 🔥 PADDING HORIZONTAL SAJA
-  },
-  header: {
-    marginBottom: 20,
-    paddingTop: 16,
+    backgroundColor: '#f8f9fa',
+    padding: 16,
   },
   title: {
     fontSize: 24,
@@ -76,28 +66,69 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 14,
-    color: '#4caf50',
-    opacity: 0.8,
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 20,
   },
   listContent: {
     paddingBottom: 20,
   },
-  columnWrapper: {
-    justifyContent: 'space-between', // 🔥 RATA KIRI-KANAN
-    marginBottom: 12, // 🔥 SPACING ANTAR ROW
+  productCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    marginBottom: 16,
+    padding: 12,
+    flexDirection: 'row',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
   },
-  cardWrapper: {
-    // 🔥 WRAPPER UNTUK CONSISTENT SPACING
+  productImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
   },
-  emptyContainer: {
-    alignItems: 'center',
+  productInfo: {
+    flex: 1,
+    marginLeft: 12,
     justifyContent: 'center',
-    paddingVertical: 40,
   },
-  emptyText: {
+  productName: {
     fontSize: 16,
-    color: '#4caf50',
-    opacity: 0.7,
+    fontWeight: 'bold',
+    color: '#2e7d32',
+    marginBottom: 4,
+  },
+  productPrice: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2e7d32',
+    marginBottom: 4,
+  },
+  productCategory: {
+    fontSize: 12,
+    color: '#666',
+    textTransform: 'capitalize',
+  },
+  newBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: '#ff5722',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  newBadgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
 });
+
+export default PopularScreen;

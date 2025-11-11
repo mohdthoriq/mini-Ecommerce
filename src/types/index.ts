@@ -1,13 +1,22 @@
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  address?: string;
+  joinDate?: string;
+  avatar?: string;
+}
+
 export interface Product {
   id: string;
   name: string;
   price: number;
-  imageUrl: string;
+  category: string;
   description: string;
-  category?: string;
-  discount?: number;
-  isPopular?: boolean;
+  image: string;
   isNew?: boolean;
+  discount?: number;
 }
 
 export interface NewProduct {
@@ -18,55 +27,42 @@ export interface NewProduct {
   description: string;
 }
 
-export interface ErrorsState {
-  name?: string;
-  price?: string;
-  imageUrl?: string;
-  description?: string;
-}
+export type ErrorsState = {
+  [key in keyof Omit<NewProduct, 'id'>]?: string;
+};
 
-export interface ProductFormProps {
-  product: NewProduct;
-  errors: ErrorsState;
-  onChange: (field: keyof Omit<NewProduct, 'id'>, value: string) => void;
-  onSubmit: () => void;
-  onCancel: () => void;
-  isSubmitting: boolean;
-  screenHeight: number;
-  insets: {
-    top: number;
-    bottom: number;
-    left: number;
-    right: number;
-  };
-}
+// Root Stack Navigator Types
+export type RootStackParamList = {
+  RootDrawer: undefined;
+  CategoriesWithBottomTabs: undefined;
+  ProductDetail: { productId: string };
+  Profile: undefined;
+  Login: undefined;
+};
 
-// 🔥 TAMBAHKAN TYPE UNTUK ADD PRODUCT BUTTON
-export interface AddProductButtonProps {
-  onPress: () => void;
-  isLandscape?: boolean; // Opsional jika digunakan di ProductListScreen
-}
-
-// 🔥 TAMBAHKAN TYPE UNTUK PRODUCT CARD
-export interface ProductCardProps {
-  product: Product;
-  cardWidth: number;
-  isLandscape: boolean;
-  onPress?: (product: Product) => void;
-}
 
 export type RootDrawerParamList = {
-  Main: undefined;
-  Settings: undefined;
-};
-
-export type MainTabsParamList = {
   Home: undefined;
-  Product: undefined;
-  Profile: undefined;
+  CategoriesWithBottomTabs: undefined;
+  Settings: undefined;
+  Login: undefined;
 };
 
-export type HomeTopTabsParamList = {
+export type HomeStackParamList = {
+  Home: undefined;
+   CategoriesWithBottomTabs: undefined;
+  ProductDetail: { productId: string };
+  Profile: undefined;
+  Login: undefined;
+};
+
+export type BottomTabsParamList = {
+  Home: undefined;
+  CategoriesTopTabs: undefined;
+  ProfileTab: undefined;
+};
+
+export type TopTabsParamList = {
   Popular: undefined;
   New: undefined;
   Discount: undefined;
@@ -77,3 +73,15 @@ export type HomeTopTabsParamList = {
   Entertainment: undefined;
   Baby: undefined;
 };
+
+export interface AuthState {
+  isAuthenticated: boolean;
+  token?: string;
+  user?: User;
+}
+
+export interface LoginForm {
+  username: string;
+  email: string;
+  password: string;
+}

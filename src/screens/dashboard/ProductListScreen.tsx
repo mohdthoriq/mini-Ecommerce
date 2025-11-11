@@ -9,19 +9,25 @@ import {
   Keyboard,
   useWindowDimensions,
   Text,
+  RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { initialProducts } from '../../data/initialProducts';
-import { Product, NewProduct, ErrorsState } from '../../types';
+import { Product, NewProduct, ErrorsState, HomeStackParamList } from '../../types';
 import ProductCard from '../../components/ProductCard';
 import AddProductButton from '../../components/AddProductButton';
 import ProductForm from '../../components/ProductForm';
 import { validationForm } from '../../utils/validation';
 
+type ProductListScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList>;
+
 const ProductListScreen: React.FC = () => {
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [isModalVisible, setIsModalVisible] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
   const [newProduct, setNewProduct] = useState<NewProduct>({
     id: '',
     name: '',
@@ -31,6 +37,8 @@ const ProductListScreen: React.FC = () => {
   });
   const [errors, setErrors] = useState<ErrorsState>({});
 
+  const navigation = useNavigation<ProductListScreenNavigationProp>();
+
   // 🔥 HOOKS RESPONSIVE
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -39,6 +47,17 @@ const ProductListScreen: React.FC = () => {
   const isLandscape = width > height;
   const numColumns = isLandscape ? 3 : 2;
   const cardWidth = (width - (16 * 2) - (8 * (numColumns - 1))) / numColumns;
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    
+    // Simulate refresh from API
+    setTimeout(() => {
+      // Reset to initial products or shuffle
+      setProducts([...initialProducts].sort(() => Math.random() - 0.5));
+      setRefreshing(false);
+    }, 1000);
+  }, []);
 
   const handleAddProduct = useCallback((): void => {
     setIsModalVisible(true);
@@ -57,21 +76,24 @@ const ProductListScreen: React.FC = () => {
     Keyboard.dismiss();
   }, []);
 
-  // 🔥 PERBAIKAN: Type field sebagai keyof Omit<NewProduct, 'id'>
   const handleInputChange = useCallback((field: keyof Omit<NewProduct, 'id'>, value: string): void => {
-    setNewProduct(prev => ({
+    setNewProduct((prev: NewProduct) => ({
       ...prev,
       [field]: value
     }));
     
     if (errors[field]) {
-      setErrors(prev => {
+      setErrors((prev: ErrorsState) => {
         const newErrors = { ...prev };
         delete newErrors[field];
         return newErrors;
       });
     }
   }, [errors]);
+
+  const handleProductPress = useCallback((productId: string) => {
+    navigation.navigate('ProductDetail', { productId });
+  }, [navigation]);
 
   const handleSubmit = useCallback((): void => {
     const validationErrors = validationForm(newProduct);
@@ -85,9 +107,12 @@ const ProductListScreen: React.FC = () => {
     
     setTimeout(() => {
       const productToAdd: Product = {
-        ...newProduct,
         id: Date.now().toString(),
+        name: newProduct.name,
         price: Number(newProduct.price),
+        category: 'general',
+        description: newProduct.description,
+        image: newProduct.imageUrl
       };
       
       setProducts(prev => [productToAdd, ...prev]);
@@ -102,18 +127,17 @@ const ProductListScreen: React.FC = () => {
     }, 1000);
   }, [newProduct, handleCloseModal]);
 
-  // 🔥 PERBAIKAN 1: Render ProductCard dengan props yang benar
   const renderProductItem = useCallback(({ item }: { item: Product }) => (
     <ProductCard 
       product={item} 
       cardWidth={cardWidth}
       isLandscape={isLandscape}
+      onPress={() => handleProductPress(item.id)}
     />
-  ), [cardWidth, isLandscape]);
+  ), [cardWidth, isLandscape, handleProductPress]);
 
   const keyExtractor = useCallback((item: Product) => item.id, []);
 
-  // 🔥 PERBAIKAN 2: Custom Header dengan tema hijau
   const renderHeader = useCallback(() => (
     <View style={[
       styles.headerContainer,
@@ -143,10 +167,11 @@ const ProductListScreen: React.FC = () => {
           <Text style={styles.statLabel}>Premium</Text>
         </View>
       </View>
+
+      <Text style={styles.refreshHint}>↓ Pull down to refresh products</Text>
     </View>
   ), [products.length, isLandscape]);
 
-  // 🔥 PERBAIKAN 3: Custom Footer dengan tema hijau
   const renderFooter = useCallback(() => (
     <View style={styles.footerContainer}>
       <AddProductButton 
@@ -159,7 +184,6 @@ const ProductListScreen: React.FC = () => {
     </View>
   ), [isLandscape, handleAddProduct]);
 
-  // 🔥 PERBAIKAN 4: Empty State
   const renderEmptyComponent = useCallback(() => (
     <View style={styles.emptyContainer}>
       <Text style={styles.emptyIcon}>🌿</Text>
@@ -167,8 +191,12 @@ const ProductListScreen: React.FC = () => {
       <Text style={styles.emptySubtitle}>
         Start adding eco-friendly products to your catalog
       </Text>
+      <AddProductButton 
+        onPress={handleAddProduct}
+        isLandscape={isLandscape}
+      />
     </View>
-  ), []);
+  ), [isLandscape, handleAddProduct]);
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
@@ -196,6 +224,14 @@ const ProductListScreen: React.FC = () => {
           numColumns={numColumns}
           columnWrapperStyle={styles.columnWrapper}
           key={numColumns}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={['#2e7d32']}
+              tintColor="#2e7d32"
+            />
+          }
         />
 
         <Modal
@@ -258,6 +294,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#4caf50',
     opacity: 0.8,
+  },
+  refreshHint: {
+    fontSize: 12,
+    color: '#4caf50',
+    textAlign: 'center',
+    fontStyle: 'italic',
+    marginTop: 16,
+    padding: 8,
   },
   statsContainer: {
     flexDirection: 'row',
@@ -328,6 +372,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
     opacity: 0.8,
+    marginBottom: 30,
   },
 });
 
