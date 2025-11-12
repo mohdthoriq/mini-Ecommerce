@@ -66,7 +66,7 @@ export default function Baby() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#9bf89bff',
     padding: 16,
   },
   title: {

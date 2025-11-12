@@ -36,18 +36,21 @@
 import React from 'react';
 import { StatusBar } from 'react-native';
 import { AuthProvider } from './src/context/AuthContext';
-import { SwipeProvider } from './src/context/SwipeContext'; // ✅ IMPORT DARI CONTEXT
+import { SwipeProvider } from './src/context/SwipeContext';
+import AnalyticsNavigationContainer from './src/routes/AnalyticsNavigationContainer';
 import Navigation from './src/routes';
 
 const App = () => {
   return (
     <AuthProvider>
-      <SwipeProvider> {/* ✅ SWIPE PROVIDER */}
-        <StatusBar 
-          backgroundColor="#2e7d32" 
-          barStyle="light-content" 
-        />
-        <Navigation />
+      <SwipeProvider>
+        <AnalyticsNavigationContainer>
+          <StatusBar 
+            backgroundColor="#2e7d32" 
+            barStyle="light-content" 
+          />
+          <Navigation />
+        </AnalyticsNavigationContainer>
       </SwipeProvider>
     </AuthProvider>
   );

@@ -26,7 +26,7 @@ const ResetStackButton = () => {
             // Reset stack ke initial route (TopTabs)
             navigation.reset({
               index: 0,
-              routes: [{ name: 'TopTabs' }],
+              routes: [{ name: 'Home' }],
             });
 
             // Tutup drawer secara programatik

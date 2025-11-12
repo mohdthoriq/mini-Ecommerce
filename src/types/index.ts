@@ -44,22 +44,28 @@ export type RootStackParamList = {
 export type RootDrawerParamList = {
   Home: undefined;
   CategoriesWithBottomTabs: undefined;
+  Analytics: undefined;
+  Profile: undefined;
   Settings: undefined;
   Login: undefined;
+  ProductDetail: { productId: string }; 
+  CheckoutModal: undefined; 
 };
 
 export type HomeStackParamList = {
   Home: undefined;
-   CategoriesWithBottomTabs: undefined;
+  CategoriesWithBottomTabs: undefined;
   ProductDetail: { productId: string };
   Profile: undefined;
   Login: undefined;
+  CheckoutModal: { product: any };
 };
 
 export type BottomTabsParamList = {
   Home: undefined;
   CategoriesTopTabs: undefined;
-  ProfileTab: undefined;
+  Analytics: undefined;
+  Profile: undefined;
 };
 
 export type TopTabsParamList = {

@@ -1,15 +1,11 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { AuthProvider } from '../context/AuthContext';
-import HomeStackNavigator from './HomeStackNavigator';
+import DrawerNavigator from './DrawerNavigator'; // Ganti ke DrawerNavigator
 
 const Navigation = () => {
   return (
-    <AuthProvider>
-      <NavigationContainer>
-        <HomeStackNavigator />
-      </NavigationContainer>
-    </AuthProvider>
+    // AuthProvider sudah ada di App.tsx, tidak perlu di sini lagi
+      <DrawerNavigator />
   );
 };
 

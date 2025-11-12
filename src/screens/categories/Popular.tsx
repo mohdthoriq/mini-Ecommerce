@@ -4,11 +4,18 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { HomeStackParamList } from '../../types';
 import { initialProducts } from '../../data/initialProducts';
+import { useDynamicHeader } from '../../hooks/useDynamicHeader';
 
 type PopularScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList>;
 
 const PopularScreen = () => {
   const navigation = useNavigation<PopularScreenNavigationProp>();
+
+   useDynamicHeader(
+    navigation, 
+    'Jelajahi Produk', // Title default
+    'Product ter Populer!' // Title ketika focused
+  );
 
   const popularProducts = initialProducts.filter(product => 
     product.category === 'popular' || product.price < 300000
@@ -56,7 +63,7 @@ const PopularScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#9bf89bff',
     padding: 16,
   },
   title: {

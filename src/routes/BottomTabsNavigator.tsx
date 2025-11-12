@@ -5,6 +5,7 @@ import CategoriesWithTopTabs from './CategoriesWithTopTabs';
 import ProfileScreen from '../screens/dashboard/Profile';
 import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 import HomeScreen from '../screens/dashboard/Home';
+import AnalyticsHistoryScreen from '../screens/dashboard/AnalyticsHistory';
 
 const Tab = createBottomTabNavigator<BottomTabsParamList>();
 
@@ -31,8 +32,8 @@ const BottomTabsNavigator = () => {
       initialRouteName="CategoriesTopTabs"
     >
       {/* Categories Tab */}
-      <Tab.Screen 
-        name="Home" 
+      <Tab.Screen
+        name="Home"
         component={HomeScreen}
         options={{
           title: 'Home',
@@ -44,8 +45,8 @@ const BottomTabsNavigator = () => {
       />
 
       {/* Categories Tab */}
-      <Tab.Screen 
-        name="CategoriesTopTabs" 
+      <Tab.Screen
+        name="CategoriesTopTabs"
         component={CategoriesWithTopTabs}
         options={{
           title: 'Categories',
@@ -55,9 +56,25 @@ const BottomTabsNavigator = () => {
         }}
       />
 
+      <Tab.Screen
+        name="Analytics"
+        component={AnalyticsHistoryScreen}
+        options={{
+          title: 'Analytics',
+          tabBarIcon: ({ color, size, focused }) => (
+            <FontAwesome6
+              name={focused ? "chart-line" : "chart-simple"}
+              size={size}
+              color={color}
+              iconStyle='solid'
+            />
+          ),
+        }}
+      />
+
       {/* Profile Tab */}
-      <Tab.Screen 
-        name="ProfileTab" 
+      <Tab.Screen
+        name="Profile"
         component={ProfileScreen}
         options={{
           title: 'Profile',

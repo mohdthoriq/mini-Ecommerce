@@ -351,7 +351,7 @@ const ProfileScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#9bf89bff',
   },
   notLoggedInContainer: {
     flex: 1,
@@ -410,7 +410,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     right: 0,
-    backgroundColor: '#ff9800',
+    backgroundColor: '#1c964bff',
     width: 28,
     height: 28,
     borderRadius: 14,

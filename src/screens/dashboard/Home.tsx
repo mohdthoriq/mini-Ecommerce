@@ -9,12 +9,13 @@ import {
   Alert,
   RefreshControl,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { HomeStackParamList } from '../../types';
 import { initialProducts } from '../../data/initialProducts';
 import { AuthContext } from '../../context/AuthContext';
 
+// Menggunakan DrawerNavigationProp untuk mendapatkan akses ke toggleDrawer, dll.
 type HomeScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList>;
 
 const HomeScreen = () => {
@@ -79,7 +80,8 @@ const HomeScreen = () => {
       );
       return;
     }
-    navigation.navigate('CategoriesWithBottomTabs'); // Arahkan ke tab 'Categories'
+    // Membuka drawer dan menavigasi ke layar Categories
+    navigation.dispatch(DrawerActions.jumpTo('CategoriesWithBottomTabs'));
   };
 
   const handleLogin = () => {
@@ -119,7 +121,7 @@ const HomeScreen = () => {
       {/* Hero Section */}
       <View style={styles.heroSection}>
         <Text style={styles.heroTitle}>
-          {isAuthenticated ? `Welcome back, ${user?.name}! 🌱` : 'Welcome to Eco Store! 🌱'}
+          {isAuthenticated ? `Welcome, ${user?.name}! 🌱` : 'Welcome to Eco Store! 🌱'}
         </Text>
         <Text style={styles.heroSubtitle}>
           Discover sustainable and eco-friendly products that care for our planet
@@ -141,7 +143,7 @@ const HomeScreen = () => {
             </Text>
             <TouchableOpacity 
               style={styles.exploreButton} 
-              onPress={() => navigation.navigate('CategoriesWithBottomTabs')}
+              onPress={handleExploreCategories}
             >
               <Text style={styles.exploreButtonText}>Explore Products</Text>
             </TouchableOpacity>
@@ -262,7 +264,7 @@ const HomeScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#9bf89bff',
   },
   heroSection: {
     backgroundColor: '#2e7d32',

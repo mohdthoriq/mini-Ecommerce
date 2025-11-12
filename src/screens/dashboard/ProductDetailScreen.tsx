@@ -19,6 +19,7 @@ type ProductDetailScreenNavigationProp = NativeStackNavigationProp<HomeStackPara
 const ProductDetailScreen = () => {
   const navigation = useNavigation<ProductDetailScreenNavigationProp>();
   const route = useRoute();
+
   const { productId } = route.params as { productId: string };
 
   const product = initialProducts.find(p => p.id === productId) || initialProducts[0];
@@ -40,11 +41,7 @@ const ProductDetailScreen = () => {
   };
 
   const handleBuyNow = () => {
-    Alert.alert(
-      'Purchase',
-      `Proceeding to purchase ${product.name}`,
-      [{ text: 'OK', style: 'default' }]
-    );
+    navigation.navigate('CheckoutModal', { product });
   };
 
   return (

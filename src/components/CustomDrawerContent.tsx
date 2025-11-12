@@ -37,10 +37,9 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
       handleLogin();
       return;
     }
-    // Navigate ke Categories dengan Bottom Tabs
     navigation.dispatch(
       CommonActions.navigate({
-        name: 'CategoriesWithBottomTabs', // Arahkan ke tab 'Categories'
+        name: 'CategoriesWithBottomTabs',
       })
     );
     navigation.closeDrawer();
@@ -51,15 +50,13 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
       handleLogin();
       return;
     }
-    // ✅ PERBAIKAN: Navigate ke ProfileTab (karena Profile ada di BottomTabs)
     navigation.dispatch(
       CommonActions.navigate({
-        name: 'CategoriesWithBottomTabs', // ✅ Navigate ke BottomTabs dulu
+        name: 'CategoriesWithBottomTabs',
       })
     );
-    // Setelah navigate ke BottomTabs, pindah ke tab Profile
     setTimeout(() => {
-      navigation.navigate('ProfileTab'); // ✅ Ini akan work karena sudah di BottomTabs context
+      navigation.navigate('Profile');
     }, 100);
     navigation.closeDrawer();
   };
@@ -114,6 +111,18 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
               <FontAwesome6 name="cube" size={size} color={color} iconStyle='solid' />
             )}
           />
+            <DrawerItem
+              label="Analytics"
+              onPress={() => navigation.navigate('Analytics')}
+              labelStyle={styles.drawerLabel}
+              icon={({ color, size }) => (
+                <FontAwesome6 
+                name="chart-line"
+                size={size}
+                color={color}
+                iconStyle='solid' />
+              )}
+            />
           <DrawerItem
             label="Profile"
             onPress={handleProfile}
