@@ -1,30 +1,12 @@
-import React, { useState, createContext, useContext } from 'react';
+import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import DrawerNavigator from './DrawerNavigator';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import DrawerNavigator from './DrawerNavigator'; // Ganti ke DrawerNavigator
 
-type DrawerLockContextType = {
-  drawerLocked: boolean;
-  setDrawerLocked: (locked: boolean) => void;
+const Navigation = () => {
+  return (
+    // AuthProvider sudah ada di App.tsx, tidak perlu di sini lagi
+      <DrawerNavigator />
+  );
 };
 
-const DrawerLockContext = createContext<DrawerLockContextType>({
-  drawerLocked: true,
-  setDrawerLocked: () => { },
-});
-
-export const useDrawerLock = () => useContext(DrawerLockContext);
-
-export default function Navigation() {
-  const [drawerLocked, setDrawerLocked] = useState(true);
-
-  return (
-    <SafeAreaProvider>
-      <DrawerLockContext.Provider value={{ drawerLocked, setDrawerLocked }}>
-        <NavigationContainer>
-          <DrawerNavigator />
-        </NavigationContainer>
-      </DrawerLockContext.Provider>
-    </SafeAreaProvider>
-  );
-}
+export default Navigation;

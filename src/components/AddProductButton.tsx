@@ -1,54 +1,61 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, View } from 'react-native';
-import { AddProductButtonProps } from '../types';
+import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 
-const AddProductButton: React.FC<AddProductButtonProps> = ({ onPress, isLandscape }) => {
+interface AddProductButtonProps {
+  onPress: () => void;
+  isLandscape: boolean;
+}
+
+const AddProductButton: React.FC<AddProductButtonProps> = ({ 
+  onPress, 
+  isLandscape 
+}) => {
   return (
-    <View style={[
-      styles.container,
-      isLandscape && styles.landscapeContainer
-    ]}>
-      <TouchableOpacity 
-        style={styles.button} 
-        onPress={onPress}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.buttonText}>+ Tambah Produk Baru</Text>
-      </TouchableOpacity>
-    </View>
+    <TouchableOpacity
+      style={[
+        styles.button,
+        isLandscape && styles.buttonLandscape
+      ]}
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <Text style={styles.buttonIcon}>+</Text>
+      <Text style={styles.buttonText}>Add New Product</Text>
+    </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: 16,
-    marginVertical: 16,
-  },
-  landscapeContainer: {
-    paddingHorizontal: 24,
-  },
   button: {
     backgroundColor: '#2e7d32',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 16,
     paddingHorizontal: 24,
-    borderRadius: 25,
-    shadowColor: '#2e7d32',
+    borderRadius: 12,
+    elevation: 4,
+    shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 2,
     },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#4caf50',
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  buttonLandscape: {
+    paddingHorizontal: 32,
+  },
+  buttonIcon: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginRight: 8,
   },
   buttonText: {
-    color: 'white',
     fontSize: 16,
-    fontWeight: 'bold',
-    letterSpacing: 0.5,
+    fontWeight: '600',
+    color: '#ffffff',
   },
 });
 

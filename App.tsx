@@ -32,9 +32,28 @@
 
 
 
+// App.tsx
 import React from 'react';
+import { StatusBar } from 'react-native';
+import { AuthProvider } from './src/context/AuthContext';
+import { SwipeProvider } from './src/context/SwipeContext';
+import AnalyticsNavigationContainer from './src/routes/AnalyticsNavigationContainer';
 import Navigation from './src/routes';
 
-export default function App() {
-  return <Navigation />;
-}
+const App = () => {
+  return (
+    <AuthProvider>
+      <SwipeProvider>
+        <AnalyticsNavigationContainer>
+          <StatusBar 
+            backgroundColor="#2e7d32" 
+            barStyle="light-content" 
+          />
+          <Navigation />
+        </AnalyticsNavigationContainer>
+      </SwipeProvider>
+    </AuthProvider>
+  );
+};
+
+export default App;

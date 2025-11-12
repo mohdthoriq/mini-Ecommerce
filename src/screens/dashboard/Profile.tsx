@@ -1,487 +1,591 @@
-import { useNavigation } from "@react-navigation/native";
-import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, ScrollView, Image } from "react-native"
+import React, { useState, useContext, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  Image,
+  ActivityIndicator,
+} from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../types';
+import { AuthContext } from '../../context/AuthContext';
+import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 
-const Profile = () => {
-    const navigation = useNavigation<NativeStackNavigationProp<any>>();
+type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Profile'>;
 
+const ProfileScreen = () => {
+  const navigation = useNavigation<ProfileScreenNavigationProp>();
+  const { user, isAuthenticated, updateProfile, logout } = useContext(AuthContext);
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [userData, setUserData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
+  });
+
+  // Load user data ketika component mount atau user berubah
+  useEffect(() => {
+    if (user) {
+      setUserData({
+        name: user.name || '',
+        email: user.email || '',
+        phone: user.phone || '',
+        address: user.address || '',
+      });
+    }
+  }, [user]);
+
+  const handleSave = async () => {
+    if (!userData.name.trim() || !userData.email.trim()) {
+      Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    setIsLoading(true);
+    
+    // Simulate API call
+    setTimeout(() => {
+      updateProfile({
+        name: userData.name,
+        email: userData.email,
+        phone: userData.phone,
+        address: userData.address,
+      });
+      
+      setIsLoading(false);
+      setIsEditing(false);
+      Alert.alert('Success', 'Profile updated successfully!');
+    }, 1500);
+  };
+
+  const handleEdit = () => {
+    setIsEditing(true);
+  };
+
+  const handleCancel = () => {
+    // Reset ke data asli
+    if (user) {
+      setUserData({
+        name: user.name || '',
+        email: user.email || '',
+        phone: user.phone || '',
+        address: user.address || '',
+      });
+    }
+    setIsEditing(false);
+  };
+
+  const handleInputChange = (field: keyof typeof userData, value: string) => {
+    setUserData(prev => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Logout',
+          onPress: () => {
+            logout();
+            navigation.navigate('RootDrawer');
+          },
+        },
+      ]
+    );
+  };
+
+  // Jika belum login, tampilkan pesan
+  if (!isAuthenticated || !user) {
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-                {/* Header */}
-                <View style={styles.header}>
-                    <TouchableOpacity 
-                        style={styles.backButton}
-                        onPress={() => navigation.goBack()}
-                    >
-                        <Text style={styles.backButtonText}>← Back</Text>
-                    </TouchableOpacity>
-                    <Text style={styles.title}>My Profile</Text>
-                    <View style={styles.placeholder} />
-                </View>
+      <View style={styles.container}>
+        <View style={styles.notLoggedInContainer}>
+          <FontAwesome6 name="user-slash" size={64} color="#666" iconStyle='solid' />
+          <Text style={styles.notLoggedInTitle}>Not Logged In</Text>
+          <Text style={styles.notLoggedInText}>
+            Please login to view your profile
+          </Text>
+          <TouchableOpacity 
+            style={styles.loginButton}
+            onPress={() => navigation.navigate('Login')}
+          >
+            <Text style={styles.loginButtonText}>Go to Login</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
-                {/* Profile Section */}
-                <View style={styles.profileSection}>
-                    <View style={styles.avatarContainer}>
-                        <View style={styles.avatar}>
-                            <Text style={styles.avatarText}>JS</Text>
-                        </View>
-                        <View style={styles.verifiedBadge}>
-                            <Text style={styles.verifiedText}>✓</Text>
-                        </View>                        
-                    </View>
-                    
-                    <Text style={styles.userName}>John Smith</Text>
-                    <Text style={styles.userEmail}>john.smith@example.com</Text>
-                    
-                    <View style={styles.memberSince}>
-                        <Text style={styles.memberSinceText}>Member since March 2024</Text>
-                    </View>
-                </View>
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase();
+  };
 
-                {/* Stats Cards */}
-                <View style={styles.statsRow}>
-                    <View style={styles.statCard}>
-                        <Text style={styles.statNumber}>15</Text>
-                        <Text style={styles.statLabel}>Orders</Text>
-                    </View>
-                    <View style={styles.statCard}>
-                        <Text style={styles.statNumber}>8</Text>
-                        <Text style={styles.statLabel}>Reviews</Text>
-                    </View>
-                    <View style={styles.statCard}>
-                        <Text style={styles.statNumber}>3</Text>
-                        <Text style={styles.statLabel}>Badges</Text>
-                    </View>
-                </View>
+  return (
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      {/* Header Section */}
+      <View style={styles.header}>
+        <View style={styles.avatarContainer}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>
+              {getInitials(userData.name)}
+            </Text>
+          </View>
+          <TouchableOpacity style={styles.editAvatarButton}>
+            <FontAwesome6 name="camera" size={16} color="#ffffff" iconStyle='solid'/>
+          </TouchableOpacity>
+        </View>
+        
+        <Text style={styles.userName}>{userData.name}</Text>
+        <Text style={styles.userEmail}>{userData.email}</Text>
+        
+        <View style={styles.memberSince}>
+          <FontAwesome6 name="calendar" size={12} color="#666" />
+          <Text style={styles.memberSinceText}>
+            Member since {user.joinDate || 'Jan 2024'}
+          </Text>
+        </View>
+      </View>
 
-                {/* Profile Menu */}
-                <View style={styles.menuSection}>
-                    <Text style={styles.menuTitle}>Account Settings</Text>
-                    
-                    <TouchableOpacity style={styles.menuItem}>
-                        <Text style={styles.menuItemText}>📱 Personal Information</Text>
-                        <Text style={styles.menuArrow}>›</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity style={styles.menuItem}>
-                        <Text style={styles.menuItemText}>🛒 Order History</Text>
-                        <Text style={styles.menuArrow}>›</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity style={styles.menuItem}>
-                        <Text style={styles.menuItemText}>💳 Payment Methods</Text>
-                        <Text style={styles.menuArrow}>›</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity style={styles.menuItem}>
-                        <Text style={styles.menuItemText}>📍 Shipping Address</Text>
-                        <Text style={styles.menuArrow}>›</Text>
-                    </TouchableOpacity>
+      {/* Profile Information Section */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Personal Information</Text>
+          {!isEditing ? (
+            <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
+              <FontAwesome6 name="pen" size={14} color="#2e7d32" iconStyle='solid'/>
+              <Text style={styles.editButtonText}> Edit</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
 
-                    <TouchableOpacity style={styles.menuItem}>
-                        <Text style={styles.menuItemText}>🔔 Notifications</Text>
-                        <Text style={styles.menuArrow}>›</Text>
-                    </TouchableOpacity>
-                </View>
+        <View style={styles.form}>
+          {/* Name Field */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>
+              <FontAwesome6 name="user" size={14} color="#2e7d32" iconStyle='solid' /> Full Name *
+            </Text>
+            {isEditing ? (
+              <TextInput
+                style={styles.input}
+                value={userData.name}
+                onChangeText={(value) => handleInputChange('name', value)}
+                placeholder="Enter your full name"
+              />
+            ) : (
+              <Text style={styles.value}>{userData.name}</Text>
+            )}
+          </View>
 
-                {/* Achievements Section */}
-                <View style={styles.achievementsSection}>
-                    <Text style={styles.achievementsTitle}>My Achievements</Text>
-                    <View style={styles.achievementsGrid}>
-                        <View style={styles.achievementBadge}>
-                            <Text style={styles.achievementIcon}>🛍️</Text>
-                            <Text style={styles.achievementName}>First Purchase</Text>
-                            <Text style={styles.achievementDesc}>Made first order</Text>
-                        </View>
-                        <View style={styles.achievementBadge}>
-                            <Text style={styles.achievementIcon}>📱</Text>
-                            <Text style={styles.achievementName}>Tech Lover</Text>
-                            <Text style={styles.achievementDesc}>Bought 5+ electronics</Text>
-                        </View>
-                        <View style={styles.achievementBadge}>
-                            <Text style={styles.achievementIcon}>👕</Text>
-                            <Text style={styles.achievementName}>Fashionista</Text>
-                            <Text style={styles.achievementDesc}>10+ clothing items</Text>
-                        </View>
-                    </View>
-                    
-                    <View style={styles.achievementsGrid}>
-                        <View style={styles.achievementBadge}>
-                            <Text style={styles.achievementIcon}>⭐</Text>
-                            <Text style={styles.achievementName}>Reviewer</Text>
-                            <Text style={styles.achievementDesc}>5+ product reviews</Text>
-                        </View>
-                        <View style={styles.achievementBadge}>
-                            <Text style={styles.achievementIcon}>🌱</Text>
-                            <Text style={styles.achievementName}>Eco Warrior</Text>
-                            <Text style={styles.achievementDesc}>Sustainable shopper</Text>
-                        </View>
-                        <View style={styles.achievementBadge}>
-                            <Text style={styles.achievementIcon}>🎯</Text>
-                            <Text style={styles.achievementName}>Loyal Customer</Text>
-                            <Text style={styles.achievementDesc}>1 year with us</Text>
-                        </View>
-                    </View>
-                </View>
+          {/* Email Field */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>
+              <FontAwesome6 name="envelope" size={14} color="#2e7d32" iconStyle='solid' /> Email Address *
+            </Text>
+            {isEditing ? (
+              <TextInput
+                style={styles.input}
+                value={userData.email}
+                onChangeText={(value) => handleInputChange('email', value)}
+                placeholder="Enter your email"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+            ) : (
+              <Text style={styles.value}>{userData.email}</Text>
+            )}
+          </View>
 
-                {/* Recent Activity */}
-                <View style={styles.activitySection}>
-                    <Text style={styles.activityTitle}>Recent Activity</Text>
-                    <View style={styles.activityList}>
-                        <View style={styles.activityItem}>
-                            <Text style={styles.activityIcon}>📦</Text>
-                            <View style={styles.activityContent}>
-                                <Text style={styles.activityText}>Order #12345 delivered</Text>
-                                <Text style={styles.activityTime}>2 days ago</Text>
-                            </View>
-                        </View>
-                        <View style={styles.activityItem}>
-                            <Text style={styles.activityIcon}>⭐</Text>
-                            <View style={styles.activityContent}>
-                                <Text style={styles.activityText}>You reviewed EcoPhone X</Text>
-                                <Text style={styles.activityTime}>1 week ago</Text>
-                            </View>
-                        </View>
-                        <View style={styles.activityItem}>
-                            <Text style={styles.activityIcon}>👕</Text>
-                            <View style={styles.activityContent}>
-                                <Text style={styles.activityText}>Added Organic Tee to wishlist</Text>
-                                <Text style={styles.activityTime}>2 weeks ago</Text>
-                            </View>
-                        </View>
-                    </View>
-                </View>
+          {/* Phone Field */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>
+              <FontAwesome6 name="phone" size={14} color="#2e7d32" iconStyle='solid' /> Phone Number
+            </Text>
+            {isEditing ? (
+              <TextInput
+                style={styles.input}
+                value={userData.phone}
+                onChangeText={(value) => handleInputChange('phone', value)}
+                placeholder="Enter your phone number"
+                keyboardType="phone-pad"
+              />
+            ) : (
+              <Text style={styles.value}>{userData.phone || 'Not provided'}</Text>
+            )}
+          </View>
 
-                {/* Action Buttons */}
-                <View style={styles.actionButtons}>
-                    <TouchableOpacity style={styles.editButton}>
-                        <Text style={styles.editButtonText}>Edit Profile</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity style={styles.logoutButton}>
-                        <Text style={styles.logoutButtonText}>Log Out</Text>
-                    </TouchableOpacity>
-                </View>
-            </ScrollView>
-        </SafeAreaView>
-    )
-}
+          {/* Address Field */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>
+              <FontAwesome6 name="location-dot" size={14} color="#2e7d32" iconStyle='solid' /> Address
+            </Text>
+            {isEditing ? (
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={userData.address}
+                onChangeText={(value) => handleInputChange('address', value)}
+                placeholder="Enter your address"
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+              />
+            ) : (
+              <Text style={styles.value}>{userData.address || 'Not provided'}</Text>
+            )}
+          </View>
+
+          {/* Edit Mode Buttons */}
+          {isEditing && (
+            <View style={styles.editButtons}>
+              <TouchableOpacity 
+                style={[styles.button, styles.cancelButton]}
+                onPress={handleCancel}
+                disabled={isLoading}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.button, styles.saveButton]}
+                onPress={handleSave}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <>
+                    <FontAwesome6 name="check" size={16} color="#ffffff" iconStyle='solid'/>
+                    <Text style={styles.saveButtonText}> Save Changes</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </View>
+
+      {/* Account Stats */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Account Statistics</Text>
+        <View style={styles.statsGrid}>
+          <View style={styles.statItem}>
+            <FontAwesome6 name="cart-shopping" size={20} color="#2e7d32" iconStyle='solid' />
+            <Text style={styles.statNumber}>12</Text>
+            <Text style={styles.statLabel}>Orders</Text>
+          </View>
+          <View style={styles.statItem}>
+            <FontAwesome6 name="heart" size={20} color="#2e7d32" iconStyle='solid'/>
+            <Text style={styles.statNumber}>8</Text>
+            <Text style={styles.statLabel}>Wishlist</Text>
+          </View>
+          <View style={styles.statItem}>
+            <FontAwesome6 name="star" size={20} color="#2e7d32" iconStyle='solid' />
+            <Text style={styles.statNumber}>47</Text>
+            <Text style={styles.statLabel}>Reviews</Text>
+          </View>
+          <View style={styles.statItem}>
+            <FontAwesome6 name="award" size={20} color="#2e7d32" iconStyle='solid' />
+            <Text style={styles.statNumber}>Gold</Text>
+            <Text style={styles.statLabel}>Member</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Actions Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Account Actions</Text>
+        
+        <TouchableOpacity style={styles.actionButton}>
+          <FontAwesome6 name="credit-card" size={16} color="#2e7d32" iconStyle='solid'/>
+          <Text style={styles.actionButtonText}> Payment Methods</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity style={styles.actionButton}>
+          <FontAwesome6 name="location-arrow" size={16} color="#2e7d32" iconStyle='solid' />
+          <Text style={styles.actionButtonText}> Shipping Addresses</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity style={styles.actionButton}>
+          <FontAwesome6 name="bell" size={16} color="#2e7d32" iconStyle='solid' />
+          <Text style={styles.actionButtonText}> Notification Settings</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity style={styles.actionButton}>
+          <FontAwesome6 name="shield" size={16} color="#2e7d32" iconStyle='solid'/>
+          <Text style={styles.actionButtonText}> Privacy & Security</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Logout Button */}
+      <View style={styles.section}>
+        <TouchableOpacity 
+          style={styles.logoutButton}
+          onPress={handleLogout}
+        >
+          <FontAwesome6 name="right-from-bracket" size={16} color="#ffffff" iconStyle='solid' />
+          <Text style={styles.logoutButtonText}> Logout</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  );
+};
 
 const styles = StyleSheet.create({
-    safeArea: {
-        flex: 1,
-        backgroundColor: '#f0f7f0',
+  container: {
+    flex: 1,
+    backgroundColor: '#9bf89bff',
+  },
+  notLoggedInContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  notLoggedInTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#2e7d32',
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  notLoggedInText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 30,
+    lineHeight: 22,
+  },
+  loginButton: {
+    backgroundColor: '#2e7d32',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  loginButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  header: {
+    backgroundColor: '#2e7d32',
+    padding: 30,
+    alignItems: 'center',
+  },
+  avatarContainer: {
+    position: 'relative',
+    marginBottom: 16,
+  },
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#4caf50',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#ffffff',
+  },
+  editAvatarButton: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#1c964bff',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  userName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 4,
+  },
+  userEmail: {
+    fontSize: 16,
+    color: '#e8f5e9',
+    marginBottom: 12,
+  },
+  memberSince: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  memberSinceText: {
+    fontSize: 12,
+    color: '#e8f5e9',
+    opacity: 0.8,
+  },
+  section: {
+    backgroundColor: '#ffffff',
+    margin: 16,
+    marginBottom: 8,
+    padding: 20,
+    borderRadius: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
     },
-    scrollView: {
-        flex: 1,
-    },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 15,
-        borderBottomWidth: 1,
-        borderBottomColor: '#d4e8d4',
-    },
-    backButton: {
-        padding: 8,
-    },
-    backButtonText: {
-        color: '#4caf50',
-        fontSize: 16,
-        fontWeight: '600',
-    },
-    title: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: '#2e7d32',
-    },
-    placeholder: {
-        width: 60,
-    },
-    profileSection: {
-        alignItems: 'center',
-        paddingVertical: 30,
-        paddingHorizontal: 20,
-    },
-    avatarContainer: {
-        position: 'relative',
-        marginBottom: 15,
-    },
-    avatar: {
-        width: 100,
-        height: 100,
-        borderRadius: 50,
-        backgroundColor: '#4caf50',
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 4,
-        borderColor: '#ffffff',
-        shadowColor: '#2e7d32',
-        shadowOffset: {
-            width: 0,
-            height: 3,
-        },
-        shadowOpacity: 0.2,
-        shadowRadius: 4.65,
-        elevation: 7,
-    },
-    avatarText: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        color: '#ffffff',
-    },
-    verifiedBadge: {
-        position: 'absolute',
-        bottom: 5,
-        right: 5,
-        width: 24,
-        height: 24,        
-        borderRadius: 12,
-        backgroundColor: '#4caf50',
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 2,
-        borderColor: '#ffffff',
-    },
-    verifiedText: {
-        color: '#ffffff',
-        fontSize: 12,
-        fontWeight: 'bold',
-    },
-    userName: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: '#2e7d32',
-        marginBottom: 5,
-    },
-    userEmail: {
-        fontSize: 16,
-        color: '#4caf50',
-        marginBottom: 15,
-        opacity: 0.8,
-    },
-    memberSince: {
-        backgroundColor: '#e8f5e8',
-        paddingHorizontal: 15,
-        paddingVertical: 6,
-        borderRadius: 15,
-    },
-    memberSinceText: {
-        fontSize: 12,
-        color: '#388e3c',
-        fontWeight: '500',
-    },
-    statsRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-        paddingHorizontal: 20,
-        marginBottom: 30,
-    },
-    statCard: {
-        alignItems: 'center',
-        backgroundColor: '#ffffff',
-        padding: 15,
-        borderRadius: 12,
-        minWidth: 80,
-        shadowColor: '#2e7d32',
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
-        shadowOpacity: 0.1,
-        shadowRadius: 3.84,
-        elevation: 5,
-    },
-    statNumber: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: '#2e7d32',
-    },
-    statLabel: {
-        fontSize: 11,
-        color: '#4caf50',
-        marginTop: 4,
-        textAlign: 'center',
-    },
-    menuSection: {
-        backgroundColor: '#ffffff',
-        marginHorizontal: 20,
-        marginBottom: 20,
-        borderRadius: 15,
-        paddingVertical: 10,
-        shadowColor: '#2e7d32',
-        shadowOffset: {
-            width: 0,
-            height: 1,
-        },
-        shadowOpacity: 0.1,
-        shadowRadius: 2.22,
-        elevation: 3,
-    },
-    menuTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#2e7d32',
-        marginHorizontal: 20,
-        marginVertical: 15,
-    },
-    menuItem: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 15,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
-    },
-    menuItemText: {
-        fontSize: 16,
-        color: '#388e3c',
-        fontWeight: '500',
-    },
-    menuArrow: {
-        fontSize: 20,
-        color: '#4caf50',
-    },
-    achievementsSection: {
-        backgroundColor: '#ffffff',
-        marginHorizontal: 20,
-        marginBottom: 20,
-        borderRadius: 15,
-        padding: 20,
-        shadowColor: '#2e7d32',
-        shadowOffset: {
-            width: 0,
-            height: 1,
-        },
-        shadowOpacity: 0.1,
-        shadowRadius: 2.22,
-        elevation: 3,
-    },
-    achievementsTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#2e7d32',
-        marginBottom: 15,
-    },
-    achievementsGrid: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 15,
-    },
-    achievementBadge: {
-        alignItems: 'center',
-        padding: 10,
-        flex: 1,
-        marginHorizontal: 5,
-    },
-    achievementIcon: {
-        fontSize: 24,
-        marginBottom: 8,
-    },
-    achievementName: {
-        fontSize: 12,
-        fontWeight: 'bold',
-        color: '#2e7d32',
-        textAlign: 'center',
-        marginBottom: 4,
-    },
-    achievementDesc: {
-        fontSize: 10,
-        color: '#4caf50',
-        textAlign: 'center',
-        lineHeight: 12,
-    },
-    activitySection: {
-        backgroundColor: '#ffffff',
-        marginHorizontal: 20,
-        marginBottom: 20,
-        borderRadius: 15,
-        padding: 20,
-        shadowColor: '#2e7d32',
-        shadowOffset: {
-            width: 0,
-            height: 1,
-        },
-        shadowOpacity: 0.1,
-        shadowRadius: 2.22,
-        elevation: 3,
-    },
-    activityTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#2e7d32',
-        marginBottom: 15,
-    },
-    activityList: {
-        // Styles for activity list
-    },
-    activityItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
-    },
-    activityIcon: {
-        fontSize: 20,
-        marginRight: 12,
-        width: 30,
-    },
-    activityContent: {
-        flex: 1,
-    },
-    activityText: {
-        fontSize: 14,
-        color: '#388e3c',
-        fontWeight: '500',
-        marginBottom: 2,
-    },
-    activityTime: {
-        fontSize: 12,
-        color: '#4caf50',
-        opacity: 0.7,
-    },
-    actionButtons: {
-        paddingHorizontal: 20,
-        marginBottom: 30,
-    },
-    editButton: {
-        backgroundColor: '#4caf50',
-        paddingVertical: 15,
-        borderRadius: 25,
-        alignItems: 'center',
-        marginBottom: 12,
-        shadowColor: '#4caf50',
-        shadowOffset: {
-            width: 0,
-            height: 3,
-        },
-        shadowOpacity: 0.3,
-        shadowRadius: 4.65,
-        elevation: 7,
-    },
-    editButtonText: {
-        color: '#ffffff',
-        fontSize: 16,
-        fontWeight: 'bold',
-    },
-    logoutButton: {
-        backgroundColor: '#ff6b6b',
-        paddingVertical: 14,
-        borderRadius: 25,
-        alignItems: 'center',
-        borderWidth: 2,
-        borderColor: '#ff6b6b',
-    },
-    logoutButtonText: {
-        color: '#ffffff',
-        fontSize: 16,
-        fontWeight: '600',
-    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2e7d32',
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e8f5e9',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  editButtonText: {
+    fontSize: 14,
+    color: '#2e7d32',
+    fontWeight: '500',
+  },
+  form: {
+    gap: 20,
+  },
+  inputGroup: {
+    gap: 8,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2e7d32',
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#333',
+    backgroundColor: '#f9f9f9',
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  value: {
+    fontSize: 16,
+    color: '#333',
+    paddingVertical: 8,
+  },
+  editButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 10,
+  },
+  button: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  cancelButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#666',
+  },
+  cancelButtonText: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  saveButton: {
+    backgroundColor: '#2e7d32',
+  },
+  saveButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statNumber: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2e7d32',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  actionButtonText: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
+    marginLeft: 12,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ff5722',
+    padding: 16,
+    borderRadius: 8,
+  },
+  logoutButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
 });
 
-export default Profile
+export default ProfileScreen;

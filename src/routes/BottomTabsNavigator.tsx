@@ -1,158 +1,90 @@
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import Home from "../screens/dashboard/Home";
-import Profile from "../screens/dashboard/Profile";
-import Icon from "@react-native-vector-icons/fontawesome6";
-import ProductListScreen from "../screens/dashboard/ProductListScreen";
-import { View, Text, StyleSheet } from "react-native";
+import React from 'react';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { BottomTabsParamList } from '../types';
+import CategoriesWithTopTabs from './CategoriesWithTopTabs';
+import ProfileScreen from '../screens/dashboard/Profile';
+import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
+import HomeScreen from '../screens/dashboard/Home';
+import AnalyticsHistoryScreen from '../screens/dashboard/AnalyticsHistory';
 
-const Tabs = createBottomTabNavigator();
+const Tab = createBottomTabNavigator<BottomTabsParamList>();
 
-export default function BottomTabsNavigator() {
-    return (
-        <Tabs.Navigator 
-            screenOptions={{
-                headerShown: false,
-                tabBarActiveTintColor: '#ffffff',
-                tabBarInactiveTintColor: '#4caf50',
-                tabBarShowLabel: true,
-                tabBarStyle: {
-                    backgroundColor: '#ffffff',
-                    height: 60,
-                    borderTopWidth: 0,
-                    paddingTop: 10,
-                    paddingBottom: 10,
-                    shadowColor: '#000',
-                },
-            }}
-        >
-            <Tabs.Screen 
-                name="Home" 
-                component={Home}
-                options={{
-                    tabBarIcon: ({focused}) => (
-                        <View style={styles.tabWrapper}>
-                            <View style={[
-                                styles.tabBackground,
-                                focused && styles.tabBackgroundActive
-                            ]}>
-                                <View style={[
-                                    styles.tabIconContainer,
-                                    focused && styles.tabIconContainerActive
-                                ]}>
-                                    <Icon 
-                                        name='house' 
-                                        size={focused ? 22 : 18} 
-                                        iconStyle="solid"
-                                        color={focused ? '#ffffff' : '#4caf50'}
-                                    />
-                                </View>
-                            </View>
-                        </View>
-                    ),
-                }}
-            />
-            
-            <Tabs.Screen 
-                name="Product" 
-                component={ProductListScreen}
-                options={{
-                    tabBarIcon: ({focused}) => (
-                        <View style={styles.tabWrapper}>
-                            <View style={[
-                                styles.tabBackground,
-                                focused && styles.tabBackgroundActive
-                            ]}>
-                                <View style={[
-                                    styles.tabIconContainer,
-                                    focused && styles.tabIconContainerActive
-                                ]}>
-                                    <Icon 
-                                        name='cart-shopping' 
-                                        size={focused ? 22 : 18} 
-                                        iconStyle="solid" 
-                                        color={focused ? '#ffffff' : '#4caf50'}
-                                    />
-                                </View>
-                            </View>
-                        </View>
-                    ),
-                }}
-            />
-
-            <Tabs.Screen 
-                name="Profile" 
-                component={Profile}
-                options={{
-                    tabBarIcon: ({focused}) => (
-                        <View style={styles.tabWrapper}>
-                            <View style={[
-                                styles.tabBackground,
-                                focused && styles.tabBackgroundActive
-                            ]}>
-                                <View style={[
-                                    styles.tabIconContainer,
-                                    focused && styles.tabIconContainerActive
-                                ]}>
-                                    <Icon 
-                                        name='user' 
-                                        size={focused ? 22 : 18} 
-                                        iconStyle="solid"
-                                        color={focused ? '#ffffff' : '#4caf50'}
-                                    />
-                                </View>
-                            </View>
-                        </View>
-                    ),
-                }}
-            />
-        </Tabs.Navigator>
-    );
-}
-
-const styles = StyleSheet.create({
-    tabWrapper: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: 85,
-    },
-    tabBackground: {
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: 'transparent',
-        marginBottom: 4,
-    },
-    tabBackgroundActive: {
-        backgroundColor: '#f0f7f0',
-        shadowColor: '#2e7d32',
-        shadowOffset: {
-            width: 0,
-            height: 4,
+const BottomTabsNavigator = () => {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        tabBarActiveTintColor: '#2e7d32',
+        tabBarInactiveTintColor: '#666',
+        tabBarStyle: {
+          backgroundColor: '#ffffff',
+          borderTopWidth: 1,
+          borderTopColor: '#e0e0e0',
+          height: 60,
+          paddingBottom: 8,
+          paddingTop: 8,
         },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 10,
-    },
-    tabIconContainer: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: 'transparent',
-    },
-    tabIconContainerActive: {
-        backgroundColor: '#4caf50',
-        transform: [{ translateY: -12 }],
-        shadowColor: '#2e7d32',
-        shadowOffset: {
-            width: 0,
-            height: 3,
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '500',
         },
-        shadowOpacity: 0.4,
-        shadowRadius: 6,
-        elevation: 8,
-    },
-});
+        headerShown: false,
+      }}
+      initialRouteName="CategoriesTopTabs"
+    >
+      {/* Categories Tab */}
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{
+          title: 'Home',
+          headerShown: false,
+          tabBarIcon: ({ color, size }) => (
+            <FontAwesome6 name="house" size={size} color={color} iconStyle='solid' />
+          ),
+        }}
+      />
+
+      {/* Categories Tab */}
+      <Tab.Screen
+        name="CategoriesTopTabs"
+        component={CategoriesWithTopTabs}
+        options={{
+          title: 'Categories',
+          tabBarIcon: ({ color, size }) => (
+            <FontAwesome6 name="cube" size={size} color={color} iconStyle='solid' />
+          ),
+        }}
+      />
+
+      <Tab.Screen
+        name="Analytics"
+        component={AnalyticsHistoryScreen}
+        options={{
+          title: 'Analytics',
+          tabBarIcon: ({ color, size, focused }) => (
+            <FontAwesome6
+              name={focused ? "chart-line" : "chart-simple"}
+              size={size}
+              color={color}
+              iconStyle='solid'
+            />
+          ),
+        }}
+      />
+
+      {/* Profile Tab */}
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color, size }) => (
+            <FontAwesome6 name="user" size={size} color={color} iconStyle='solid' />
+          ),
+        }}
+      />
+    </Tab.Navigator>
+  );
+};
+
+export default BottomTabsNavigator;
