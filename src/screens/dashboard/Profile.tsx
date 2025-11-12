@@ -7,19 +7,16 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
-  Image,
   ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../../types';
+import { DrawerNavigationProp } from '@react-navigation/drawer';
+import { RootDrawerParamList } from '../../types';
 import { AuthContext } from '../../context/AuthContext';
 import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 
-type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Profile'>;
-
 const ProfileScreen = () => {
-  const navigation = useNavigation<ProfileScreenNavigationProp>();
+  const navigation = useNavigation<DrawerNavigationProp<RootDrawerParamList>>();
   const { user, isAuthenticated, updateProfile, logout } = useContext(AuthContext);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -93,20 +90,22 @@ const ProfileScreen = () => {
   const handleLogout = () => {
     Alert.alert(
       'Logout',
-      'Are you sure you want to logout?',
+      'Yakin mau keluar dari akun lu?',
       [
         {
-          text: 'Cancel',
+          text: 'Batal',
           style: 'cancel',
         },
         {
-          text: 'Logout',
+          text: 'Ya, Logout',
           onPress: () => {
             logout();
-            navigation.navigate('RootDrawer');
+            // ✅ Tidak perlu navigate, cukup logout saja
+            // Component akan otomatis render ulang dan menampilkan not logged in
           },
         },
-      ]
+      ],
+      { cancelable: true }
     );
   };
 
@@ -115,7 +114,7 @@ const ProfileScreen = () => {
     return (
       <View style={styles.container}>
         <View style={styles.notLoggedInContainer}>
-          <FontAwesome6 name="user-slash" size={64} color="#666" iconStyle='solid' />
+          <FontAwesome6 name="user-slash" size={64} color="#666"iconStyle='solid' />
           <Text style={styles.notLoggedInTitle}>Not Logged In</Text>
           <Text style={styles.notLoggedInText}>
             Please login to view your profile
@@ -150,7 +149,7 @@ const ProfileScreen = () => {
             </Text>
           </View>
           <TouchableOpacity style={styles.editAvatarButton}>
-            <FontAwesome6 name="camera" size={16} color="#ffffff" iconStyle='solid'/>
+            <FontAwesome6 name="camera" size={16} color="#ffffff"iconStyle='solid' />
           </TouchableOpacity>
         </View>
         
@@ -171,7 +170,7 @@ const ProfileScreen = () => {
           <Text style={styles.sectionTitle}>Personal Information</Text>
           {!isEditing ? (
             <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
-              <FontAwesome6 name="pen" size={14} color="#2e7d32" iconStyle='solid'/>
+              <FontAwesome6 name="pen" size={14} color="#2e7d32"iconStyle='solid' />
               <Text style={styles.editButtonText}> Edit</Text>
             </TouchableOpacity>
           ) : null}
@@ -181,7 +180,7 @@ const ProfileScreen = () => {
           {/* Name Field */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>
-              <FontAwesome6 name="user" size={14} color="#2e7d32" iconStyle='solid' /> Full Name *
+              <FontAwesome6 name="user" size={14} color="#2e7d32" iconStyle='solid'/> Full Name *
             </Text>
             {isEditing ? (
               <TextInput
@@ -198,7 +197,7 @@ const ProfileScreen = () => {
           {/* Email Field */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>
-              <FontAwesome6 name="envelope" size={14} color="#2e7d32" iconStyle='solid' /> Email Address *
+              <FontAwesome6 name="envelope" size={14} color="#2e7d32" /> Email Address *
             </Text>
             {isEditing ? (
               <TextInput
@@ -217,7 +216,7 @@ const ProfileScreen = () => {
           {/* Phone Field */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>
-              <FontAwesome6 name="phone" size={14} color="#2e7d32" iconStyle='solid' /> Phone Number
+              <FontAwesome6 name="phone" size={14} color="#2e7d32"iconStyle='solid' /> Phone Number
             </Text>
             {isEditing ? (
               <TextInput
@@ -235,7 +234,7 @@ const ProfileScreen = () => {
           {/* Address Field */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>
-              <FontAwesome6 name="location-dot" size={14} color="#2e7d32" iconStyle='solid' /> Address
+              <FontAwesome6 name="location-dot" size={14} color="#2e7d32"iconStyle='solid' /> Address
             </Text>
             {isEditing ? (
               <TextInput
@@ -272,7 +271,7 @@ const ProfileScreen = () => {
                   <ActivityIndicator color="#ffffff" size="small" />
                 ) : (
                   <>
-                    <FontAwesome6 name="check" size={16} color="#ffffff" iconStyle='solid'/>
+                    <FontAwesome6 name="check" size={16} color="#ffffff"iconStyle='solid' />
                     <Text style={styles.saveButtonText}> Save Changes</Text>
                   </>
                 )}
@@ -287,22 +286,22 @@ const ProfileScreen = () => {
         <Text style={styles.sectionTitle}>Account Statistics</Text>
         <View style={styles.statsGrid}>
           <View style={styles.statItem}>
-            <FontAwesome6 name="cart-shopping" size={20} color="#2e7d32" iconStyle='solid' />
+            <FontAwesome6 name="cart-shopping" size={20} color="#2e7d32"iconStyle='solid' />
             <Text style={styles.statNumber}>12</Text>
             <Text style={styles.statLabel}>Orders</Text>
           </View>
           <View style={styles.statItem}>
-            <FontAwesome6 name="heart" size={20} color="#2e7d32" iconStyle='solid'/>
+            <FontAwesome6 name="heart" size={20} color="#2e7d32" />
             <Text style={styles.statNumber}>8</Text>
             <Text style={styles.statLabel}>Wishlist</Text>
           </View>
           <View style={styles.statItem}>
-            <FontAwesome6 name="star" size={20} color="#2e7d32" iconStyle='solid' />
+            <FontAwesome6 name="star" size={20} color="#2e7d32" />
             <Text style={styles.statNumber}>47</Text>
             <Text style={styles.statLabel}>Reviews</Text>
           </View>
           <View style={styles.statItem}>
-            <FontAwesome6 name="award" size={20} color="#2e7d32" iconStyle='solid' />
+            <FontAwesome6 name="award" size={20} color="#2e7d32"iconStyle='solid' />
             <Text style={styles.statNumber}>Gold</Text>
             <Text style={styles.statLabel}>Member</Text>
           </View>
@@ -314,22 +313,22 @@ const ProfileScreen = () => {
         <Text style={styles.sectionTitle}>Account Actions</Text>
         
         <TouchableOpacity style={styles.actionButton}>
-          <FontAwesome6 name="credit-card" size={16} color="#2e7d32" iconStyle='solid'/>
+          <FontAwesome6 name="credit-card" size={16} color="#2e7d32" />
           <Text style={styles.actionButtonText}> Payment Methods</Text>
         </TouchableOpacity>
         
         <TouchableOpacity style={styles.actionButton}>
-          <FontAwesome6 name="location-arrow" size={16} color="#2e7d32" iconStyle='solid' />
+          <FontAwesome6 name="location-arrow" size={16} color="#2e7d32"iconStyle='solid' />
           <Text style={styles.actionButtonText}> Shipping Addresses</Text>
         </TouchableOpacity>
         
         <TouchableOpacity style={styles.actionButton}>
-          <FontAwesome6 name="bell" size={16} color="#2e7d32" iconStyle='solid' />
+          <FontAwesome6 name="bell" size={16} color="#2e7d32" />
           <Text style={styles.actionButtonText}> Notification Settings</Text>
         </TouchableOpacity>
         
         <TouchableOpacity style={styles.actionButton}>
-          <FontAwesome6 name="shield" size={16} color="#2e7d32" iconStyle='solid'/>
+          <FontAwesome6 name="shield" size={16} color="#2e7d32"iconStyle='solid' />
           <Text style={styles.actionButtonText}> Privacy & Security</Text>
         </TouchableOpacity>
       </View>

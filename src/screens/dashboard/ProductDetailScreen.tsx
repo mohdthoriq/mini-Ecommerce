@@ -124,7 +124,7 @@ const ProductDetailScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#9bf89bff',
   },
   imageContainer: {
     position: 'relative',
@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
   },
   cartButton: {
     flex: 1,
-    backgroundColor: 'transparent',
+    backgroundColor: '#d8f7dbff',
     borderWidth: 2,
     borderColor: '#2e7d32',
     padding: 16,
@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   navButtonSecondary: {
-    backgroundColor: 'transparent',
+    backgroundColor: '#d8f7dbff',
     borderWidth: 1,
     borderColor: '#666',
     padding: 16,

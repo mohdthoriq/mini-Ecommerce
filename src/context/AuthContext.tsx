@@ -1,4 +1,4 @@
-import React, { createContext, useState, ReactNode } from 'react';
+import React, { createContext, useState, ReactNode, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthState } from '../types';
 
@@ -21,6 +21,14 @@ export const AuthContext = createContext<AuthContextType>({
 interface AuthProviderProps {
   children: ReactNode;
 }
+
+export const useAuth = () => {
+    const context = useContext(AuthContext);
+    if (context === undefined) {
+      throw new Error('useAuth must be used within an AuthProvider');
+    }
+    return context;
+  };
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [authState, setAuthState] = useState<AuthState>({
@@ -109,6 +117,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     checkAuthStatus();
   }, []);
+
+
+   
 
   return (
     <AuthContext.Provider

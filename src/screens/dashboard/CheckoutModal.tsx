@@ -11,7 +11,7 @@ import {
     Modal,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack'; // ✅ PERBAIKI IMPORT
 import { HomeStackParamList } from '../../types';
 import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 
@@ -24,14 +24,21 @@ const CheckoutModalScreen = () => {
     type ShippingMethod = 'regular' | 'express' | 'container';
 
     const [shippingMethod, setShippingMethod] = useState<ShippingMethod>('regular');
+    const [quantity, setQuantity] = useState(1);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [paymentMethod, setPaymentMethod] = useState('credit_card');
+
+    // State untuk form data
+    const [formData, setFormData] = useState({
+        fullName: '',
+        streetAddress: '',
+        city: '',
+        postalCode: '',
+        phoneNumber: '',
+    });
 
     // Dapatkan product dari params atau gunakan default
     const { product } = route.params as { product: any };
-
-    const [quantity, setQuantity] = useState(1);
-    const [shippingAddress, setShippingAddress] = useState('');
-    const [paymentMethod, setPaymentMethod] = useState('credit_card');
-    const [isProcessing, setIsProcessing] = useState(false);
 
     const getShippingFee = (): number => {
         const fees: Record<ShippingMethod, number> = {
@@ -47,6 +54,13 @@ const CheckoutModalScreen = () => {
     const tax = subtotal * 0.1;
     const total = subtotal + shippingFee + tax;
 
+    // Validasi form - button aktif ketika semua field terisi
+    const isFormValid = 
+        formData.fullName.trim() && 
+        formData.streetAddress.trim() && 
+        formData.city.trim() && 
+        formData.postalCode.trim() && 
+        formData.phoneNumber.trim();
 
     const handleQuantityChange = (change: number) => {
         const newQuantity = quantity + change;
@@ -55,11 +69,9 @@ const CheckoutModalScreen = () => {
         }
     };
 
-
-
     const handleCheckout = () => {
-        if (!shippingAddress.trim()) {
-            Alert.alert('Error', 'Please enter your shipping address');
+        if (!isFormValid) {
+            Alert.alert('Error', 'Please fill in all required fields');
             return;
         }
 
@@ -87,6 +99,13 @@ const CheckoutModalScreen = () => {
         navigation.goBack();
     };
 
+    const updateFormData = (field: keyof typeof formData, value: string) => {
+        setFormData(prev => ({
+            ...prev,
+            [field]: value
+        }));
+    };
+
     return (
         <Modal
             animationType="slide"
@@ -99,7 +118,7 @@ const CheckoutModalScreen = () => {
                 <View style={styles.header}>
                     <Text style={styles.headerTitle}>Checkout</Text>
                     <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-                        <FontAwesome6 name="xmark" size={24} color="#ffffff" iconStyle='solid' />
+                        <FontAwesome6 name="xmark" size={24} color="#ffffff" iconStyle='solid'/>
                     </TouchableOpacity>
                 </View>
 
@@ -107,7 +126,7 @@ const CheckoutModalScreen = () => {
                     {/* Product Summary */}
                     <View style={styles.section}>
                         <View style={styles.sectionHeader}>
-                            <FontAwesome6 name="box" size={20} color="#4caf50" iconStyle='solid' />
+                            <FontAwesome6 name="box" size={20} color="#4caf50"iconStyle='solid' />
                             <Text style={styles.sectionTitle}>Product Summary</Text>
                         </View>
                         <View style={styles.productSummary}>
@@ -130,7 +149,7 @@ const CheckoutModalScreen = () => {
                                     onPress={() => handleQuantityChange(-1)}
                                     disabled={quantity <= 1}
                                 >
-                                    <FontAwesome6 name="minus" size={16} color={quantity <= 1 ? '#ccc' : '#ffffff'} iconStyle='solid' />
+                                    <FontAwesome6 name="minus" size={16} color={quantity <= 1 ? '#ccc' : '#ffffff'}iconStyle='solid' />
                                 </TouchableOpacity>
                                 <Text style={styles.quantityText}>{quantity}</Text>
                                 <TouchableOpacity
@@ -138,7 +157,7 @@ const CheckoutModalScreen = () => {
                                     onPress={() => handleQuantityChange(1)}
                                     disabled={quantity >= 10}
                                 >
-                                    <FontAwesome6 name="plus" size={16} color={quantity >= 10 ? '#ccc' : '#ffffff'} iconStyle='solid' />
+                                    <FontAwesome6 name="plus" size={16} color={quantity >= 10 ? '#ccc' : '#ffffff'}iconStyle='solid' />
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -147,66 +166,76 @@ const CheckoutModalScreen = () => {
                     {/* Shipping Address */}
                     <View style={styles.section}>
                         <View style={styles.sectionHeader}>
-                            <FontAwesome6 name="location-dot" size={20} color="#2196f3" iconStyle='solid' />
+                            <FontAwesome6 name="location-dot" size={20} color="#2196f3" iconStyle='solid'/>
                             <Text style={styles.sectionTitle}>Shipping Address</Text>
                         </View>
 
                         {/* Full Name */}
                         <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Full Name</Text>
+                            <Text style={styles.inputLabel}>Full Name *</Text>
                             <TextInput
                                 style={styles.textInput}
                                 placeholder="Enter your full name"
                                 placeholderTextColor="#888"
+                                value={formData.fullName}
+                                onChangeText={(value) => updateFormData('fullName', value)}
                             />
                         </View>
 
                         {/* Street Address */}
                         <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Street Address</Text>
+                            <Text style={styles.inputLabel}>Street Address *</Text>
                             <TextInput
                                 style={styles.textInput}
                                 placeholder="Street name and number"
                                 placeholderTextColor="#888"
+                                value={formData.streetAddress}
+                                onChangeText={(value) => updateFormData('streetAddress', value)}
                             />
                         </View>
 
                         {/* City & Postal Code - Row */}
                         <View style={styles.rowInput}>
                             <View style={[styles.inputGroup, { flex: 2 }]}>
-                                <Text style={styles.inputLabel}>City</Text>
+                                <Text style={styles.inputLabel}>City *</Text>
                                 <TextInput
                                     style={styles.textInput}
                                     placeholder="City"
                                     placeholderTextColor="#888"
+                                    value={formData.city}
+                                    onChangeText={(value) => updateFormData('city', value)}
                                 />
                             </View>
                             <View style={[styles.inputGroup, { flex: 1 }]}>
-                                <Text style={styles.inputLabel}>Postal Code</Text>
+                                <Text style={styles.inputLabel}>Postal Code *</Text>
                                 <TextInput
                                     style={styles.textInput}
                                     placeholder="ZIP"
                                     placeholderTextColor="#888"
                                     keyboardType="numeric"
+                                    value={formData.postalCode}
+                                    onChangeText={(value) => updateFormData('postalCode', value)}
                                 />
                             </View>
                         </View>
 
                         {/* Phone Number */}
                         <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Phone Number</Text>
+                            <Text style={styles.inputLabel}>Phone Number *</Text>
                             <TextInput
                                 style={styles.textInput}
                                 placeholder="Phone number"
                                 placeholderTextColor="#888"
                                 keyboardType="phone-pad"
+                                value={formData.phoneNumber}
+                                onChangeText={(value) => updateFormData('phoneNumber', value)}
                             />
                         </View>
                     </View>
 
                     <View style={styles.section}>
                         <View style={styles.sectionHeader}>
-                            <FontAwesome6 name="truck-fast" size={20} color='#dd901dff' iconStyle='solid' />
+                            <FontAwesome6 name="truck-fast" size={20} color='#dd901dff'iconStyle='solid' />
                             <Text style={styles.sectionTitle}>Shipping Method</Text>
                         </View>
 
@@ -219,7 +248,7 @@ const CheckoutModalScreen = () => {
                             onPress={() => setShippingMethod('regular')}
                         >
                             <View style={styles.shippingIconContainer}>
-                                <FontAwesome6 name="truck" size={20} color={shippingMethod === 'regular' ? '#4caf50' : '#dd901dff'} iconStyle='solid' />
+                                <FontAwesome6 name="truck" size={20} color={shippingMethod === 'regular' ? '#4caf50' : '#dd901dff'}iconStyle='solid' />
                             </View>
                             <View style={styles.shippingInfo}>
                                 <Text style={[
@@ -252,7 +281,7 @@ const CheckoutModalScreen = () => {
                             onPress={() => setShippingMethod('express')}
                         >
                             <View style={styles.shippingIconContainer}>
-                                <FontAwesome6 name="bolt" size={20} color={shippingMethod === 'express' ? '#4caf50' : '#dd901dff'} iconStyle='solid' />
+                                <FontAwesome6 name="bolt" size={20} color={shippingMethod === 'express' ? '#4caf50' : '#dd901dff'}iconStyle='solid' />
                             </View>
                             <View style={styles.shippingInfo}>
                                 <Text style={[
@@ -285,7 +314,7 @@ const CheckoutModalScreen = () => {
                             onPress={() => setShippingMethod('container')}
                         >
                             <View style={styles.shippingIconContainer}>
-                                <FontAwesome6 name="box" size={20} color={shippingMethod === 'container' ? '#4caf50' : '#dd901dff'} iconStyle='solid' />
+                                <FontAwesome6 name="box" size={20} color={shippingMethod === 'container' ? '#4caf50' : '#dd901dff'} iconStyle='solid'/>
                             </View>
                             <View style={styles.shippingInfo}>
                                 <Text style={[
@@ -313,7 +342,7 @@ const CheckoutModalScreen = () => {
                     {/* Payment Method */}
                     <View style={styles.section}>
                         <View style={styles.sectionHeader}>
-                            <FontAwesome6 name="money-bill" size={20} color='#3d68b6ff' iconStyle='solid' />
+                            <FontAwesome6 name="credit-card" size={20} color='#3d68b6ff' />
                             <Text style={styles.sectionTitle}>Payment Method</Text>
                         </View>
                         <View style={styles.paymentOptions}>
@@ -357,7 +386,7 @@ const CheckoutModalScreen = () => {
                                 onPress={() => setPaymentMethod('bank_transfer')}
                             >
                                 <View style={styles.paymentIconContainer}>
-                                    <FontAwesome6 name="building-columns" size={20} color={paymentMethod === 'bank_transfer' ? '#278837ff' : '#3d68b6ff'} iconStyle='solid' />
+                                    <FontAwesome6 name="building-columns" size={20} color={paymentMethod === 'bank_transfer' ? '#278837ff' : '#3d68b6ff'}iconStyle='solid' />
                                 </View>
                                 <Text style={[
                                     styles.paymentText,
@@ -370,7 +399,7 @@ const CheckoutModalScreen = () => {
                     {/* Order Summary */}
                     <View style={styles.section}>
                         <View style={styles.sectionHeader}>
-                            <FontAwesome6 name="receipt" size={20} color="#e91e63" iconStyle='solid' />
+                            <FontAwesome6 name="receipt" size={20} color="#e91e63"iconStyle='solid' />
                             <Text style={styles.sectionTitle}>Order Summary</Text>
                         </View>
                         <View style={styles.orderSummary}>
@@ -399,19 +428,19 @@ const CheckoutModalScreen = () => {
                     <TouchableOpacity
                         style={[
                             styles.checkoutButton,
-                            (isProcessing || !shippingAddress.trim()) && styles.checkoutButtonDisabled
+                            (isProcessing || !isFormValid) && styles.checkoutButtonDisabled
                         ]}
                         onPress={handleCheckout}
-                        disabled={isProcessing || !shippingAddress.trim()}
+                        disabled={isProcessing || !isFormValid}
                     >
                         {isProcessing ? (
                             <>
-                                <FontAwesome6 name="spinner" size={16} color="#ffffff" iconStyle='solid' />
+                                <FontAwesome6 name="spinner" size={16} color="#ffffff"iconStyle='solid' />
                                 <Text style={styles.checkoutButtonText}> Processing...</Text>
                             </>
                         ) : (
                             <>
-                                <FontAwesome6 name="bag-shopping" size={16} color="#ffffff" iconStyle='solid' />
+                                <FontAwesome6 name="bag-shopping" size={16} color="#ffffff"iconStyle='solid' />
                                 <Text style={styles.checkoutButtonText}> Place Order - ${total.toFixed(2)}</Text>
                             </>
                         )}
@@ -432,7 +461,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         padding: 20,
-        paddingTop: 60,
+        paddingTop: 10,
         backgroundColor: '#2e7d32',
         borderBottomLeftRadius: 20,
         borderBottomRightRadius: 20,
@@ -460,7 +489,7 @@ const styles = StyleSheet.create({
         padding: 16,
     },
     section: {
-        backgroundColor: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)',
+        backgroundColor: '#ffffff',
         padding: 20,
         borderRadius: 16,
         marginBottom: 16,
@@ -569,8 +598,6 @@ const styles = StyleSheet.create({
         padding: 16,
         fontSize: 16,
         color: '#1b5e20',
-        minHeight: 100,
-        textAlignVertical: 'top',
         fontWeight: '500',
     },
     paymentOptions: {

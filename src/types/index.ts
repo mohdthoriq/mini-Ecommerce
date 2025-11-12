@@ -66,6 +66,7 @@ export type BottomTabsParamList = {
   CategoriesTopTabs: undefined;
   Analytics: undefined;
   Profile: undefined;
+  Login: undefined;
 };
 
 export type TopTabsParamList = {
