@@ -9,10 +9,12 @@ import {
     TextInput,
     Alert,
     Modal,
+    KeyboardAvoidingView,
+    Platform,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack'; // ✅ PERBAIKI IMPORT
-import { HomeStackParamList } from '../../types';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { HomeStackParamList, CartItem, Product } from '../../types';
 import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 
 type ModalCheckoutNavigationProp = NativeStackNavigationProp<HomeStackParamList, 'CheckoutModal'>;
@@ -21,90 +23,196 @@ const CheckoutModalScreen = () => {
     const navigation = useNavigation<ModalCheckoutNavigationProp>();
     const route = useRoute();
 
-    type ShippingMethod = 'regular' | 'express' | 'container';
+    type ShippingMethod = 'standard' | 'express' | 'priority';
+    type PaymentMethod = 'credit_card' | 'paypal' | 'apple_pay';
 
-    const [shippingMethod, setShippingMethod] = useState<ShippingMethod>('regular');
-    const [quantity, setQuantity] = useState(1);
+    const [shippingMethod, setShippingMethod] = useState<ShippingMethod>('standard');
     const [isProcessing, setIsProcessing] = useState(false);
-    const [paymentMethod, setPaymentMethod] = useState('credit_card');
+    const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('credit_card');
 
-    // State untuk form data
+    // State untuk form data dengan validasi lebih lengkap
     const [formData, setFormData] = useState({
-        fullName: '',
-        streetAddress: '',
+        // Shipping Information
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+
+        // Address Information
+        addressLine1: '',
+        addressLine2: '',
         city: '',
+        state: '',
         postalCode: '',
-        phoneNumber: '',
+        country: 'United States',
+
+        // Payment Information (untuk credit card)
+        cardNumber: '',
+        expiryDate: '',
+        cvv: '',
+        cardholderName: '',
     });
 
-    // Dapatkan product dari params atau gunakan default
-    const { product } = route.params as { product: any };
+    // Terima data dari route. Tipe sudah dijamin oleh HomeStackParamList.
+    const { cartItems, subtotal = 0, discount = 0, shippingFee = 0, tax = 0, total = 0 } = (route.params as HomeStackParamList['CheckoutModal']) || {};
+
+    const [checkoutItems, setCheckoutItems] = useState<CartItem[]>(cartItems || []);
 
     const getShippingFee = (): number => {
         const fees: Record<ShippingMethod, number> = {
-            regular: 5.99,
-            express: 12.99,
-            container: 25.99
+            standard: 4.99,
+            express: 14.99,
+            priority: 24.99
         };
         return fees[shippingMethod];
     };
 
-    const shippingFee = getShippingFee();
-    const subtotal = product.price * quantity;
-    const tax = subtotal * 0.1;
-    const total = subtotal + shippingFee + tax;
-
-    // Validasi form - button aktif ketika semua field terisi
-    const isFormValid = 
-        formData.fullName.trim() && 
-        formData.streetAddress.trim() && 
-        formData.city.trim() && 
-        formData.postalCode.trim() && 
-        formData.phoneNumber.trim();
-
-    const handleQuantityChange = (change: number) => {
-        const newQuantity = quantity + change;
-        if (newQuantity >= 1 && newQuantity <= 10) {
-            setQuantity(newQuantity);
-        }
+    const getShippingTime = (): string => {
+        const times: Record<ShippingMethod, string> = {
+            standard: '5-7 business days',
+            express: '2-3 business days',
+            priority: '1-2 business days'
+        };
+        return times[shippingMethod];
     };
 
-    const handleCheckout = () => {
+
+    // Validasi form yang lebih komprehensif
+    const isFormValid =
+        formData.firstName.trim() &&
+        formData.lastName.trim() &&
+        formData.email.trim() &&
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) && // Email validation
+        formData.phone.trim() &&
+        formData.addressLine1.trim() &&
+        formData.city.trim() &&
+        formData.state.trim() &&
+        formData.postalCode.trim() &&
+        (paymentMethod !== 'credit_card' || (
+            formData.cardNumber.replace(/\s/g, '').length === 16 &&
+            formData.expiryDate.trim() &&
+            formData.cvv.trim() &&
+            formData.cardholderName.trim()
+        ));
+
+    const handleQuantityChange = (change: number) => {
+        // Fungsi ini hanya relevan jika checkout dari 1 produk
+        if (checkoutItems.length === 1) {
+            const item = checkoutItems[0];
+            const newQuantity = item.quantity + change;
+            if (newQuantity >= 1 && newQuantity <= (item.product.stock || 10)) {
+                const updatedItems = [{ ...item, quantity: newQuantity }];
+                setCheckoutItems(updatedItems);
+            }
+        }
+    };    
+
+    const formatCardNumber = (text: string) => {
+        const cleaned = text.replace(/\s/g, '').replace(/\D/g, '');
+        const formatted = cleaned.replace(/(\d{4})/g, '$1 ').trim();
+        return formatted.slice(0, 19); // 16 digits + 3 spaces
+    };
+
+    const formatExpiryDate = (text: string) => {
+        const cleaned = text.replace(/\D/g, '');
+        if (cleaned.length >= 2) {
+            return cleaned.slice(0, 2) + '/' + cleaned.slice(2, 4);
+        }
+        return cleaned;
+    };
+
+    const handleCheckout = async () => {
         if (!isFormValid) {
-            Alert.alert('Error', 'Please fill in all required fields');
+            Alert.alert('Incomplete Information', 'Please fill in all required fields correctly.');
             return;
         }
 
         setIsProcessing(true);
 
         // Simulate payment processing
-        setTimeout(() => {
+        try {
+            await new Promise(resolve => setTimeout(resolve, 3000));
+
             setIsProcessing(false);
             Alert.alert(
-                'Order Successful!',
-                `Your order for ${product.name} has been placed successfully!\n\nTotal: $${total.toFixed(2)}`,
+                '🎉 Order Confirmed!',
+                `Thank you for your purchase of ${checkoutItems.length} item(s)!\n\nTotal: $${total.toFixed(2)}\n\nA confirmation email has been sent to ${formData.email}`,
                 [
                     {
                         text: 'Continue Shopping',
-                        onPress: () => {
-                            navigation.goBack();
-                        },
+                        onPress: () => navigation.goBack(),
                     },
                 ]
             );
-        }, 2000);
+        } catch (error) {
+            setIsProcessing(false);
+            Alert.alert('Payment Failed', 'There was an issue processing your payment. Please try again.');
+        }
     };
 
     const handleClose = () => {
-        navigation.goBack();
+        if (isProcessing) return;
+        Alert.alert(
+            'Leave Checkout?',
+            'Your progress will be lost if you leave this page.',
+            [
+                { text: 'Stay', style: 'cancel' },
+                { text: 'Leave', onPress: () => navigation.goBack() }
+                        ]
+        );
     };
 
     const updateFormData = (field: keyof typeof formData, value: string) => {
+        let formattedValue = value;
+
+        if (field === 'cardNumber') {
+            formattedValue = formatCardNumber(value);
+        } else if (field === 'expiryDate') {
+            formattedValue = formatExpiryDate(value);
+        } else if (field === 'phone') {
+            formattedValue = value.replace(/\D/g, '').slice(0, 15);
+        }
+
         setFormData(prev => ({
             ...prev,
-            [field]: value
+            [field]: formattedValue
         }));
     };
+
+    const InputField = ({
+        label,
+        field,
+        placeholder,
+        keyboardType = 'default',
+        required = false,
+        secureTextEntry = false
+    }: {
+        label: string;
+        field: keyof typeof formData;
+        placeholder: string;
+        keyboardType?: any;
+        required?: boolean;
+        secureTextEntry?: boolean;
+    }) => (
+        <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>
+                {label} {required && <Text style={styles.required}>*</Text>}
+            </Text>
+            <TextInput
+                style={[
+                    styles.textInput,
+                    !formData[field] && required && styles.inputError
+                ]}
+                placeholder={placeholder}
+                placeholderTextColor="#8a8a8a"
+                value={formData[field]}
+                onChangeText={(value) => updateFormData(field, value)}
+                keyboardType={keyboardType}
+                secureTextEntry={secureTextEntry}
+                autoCapitalize={field === 'email' ? 'none' : 'words'}
+            />
+        </View>
+    );
 
     return (
         <Modal
@@ -113,340 +221,446 @@ const CheckoutModalScreen = () => {
             visible={true}
             onRequestClose={handleClose}
         >
-            <View style={styles.container}>
-                {/* Header dengan gradient */}
+            <KeyboardAvoidingView
+                style={styles.container}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            >
+                {/* Professional Header */}
                 <View style={styles.header}>
-                    <Text style={styles.headerTitle}>Checkout</Text>
-                    <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-                        <FontAwesome6 name="xmark" size={24} color="#ffffff" iconStyle='solid'/>
+                    <View style={styles.headerContent}>
+                        <Text style={styles.headerTitle}>Checkout</Text>
+                        <Text style={styles.headerSubtitle}>Complete your purchase</Text>
+                    </View>
+                    <TouchableOpacity
+                        style={styles.closeButton}
+                        onPress={handleClose}
+                        disabled={isProcessing}
+                    >
+                        <FontAwesome6 name="xmark" size={20} color="#6b7280" iconStyle='solid' />
                     </TouchableOpacity>
                 </View>
 
-                <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                    {/* Product Summary */}
-                    <View style={styles.section}>
-                        <View style={styles.sectionHeader}>
-                            <FontAwesome6 name="box" size={20} color="#4caf50"iconStyle='solid' />
-                            <Text style={styles.sectionTitle}>Product Summary</Text>
+                <ScrollView
+                    style={styles.content}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.scrollContent}
+                >
+                    {/* Progress Steps */}
+                    <View style={styles.progressSteps}>
+                        <View style={[styles.step, styles.stepActive]}>
+                            <View style={styles.stepNumberActive}>
+                                <Text style={styles.stepNumberText}>1</Text>
+                            </View>
+                            <Text style={styles.stepTextActive}>Shipping</Text>
                         </View>
-                        <View style={styles.productSummary}>
-                            <Image source={{ uri: product.image }} style={styles.productImage} />
-                            <View style={styles.productInfo}>
-                                <Text style={styles.productName} numberOfLines={2}>
-                                    {product.name}
-                                </Text>
-                                <Text style={styles.productCategory}>{product.category}</Text>
-                                <Text style={styles.productPrice}>${product.price.toLocaleString()}</Text>
+                        <View style={styles.stepDivider} />
+                        <View style={[styles.step, styles.stepActive]}>
+                            <View style={styles.stepNumberActive}>
+                                <Text style={styles.stepNumberText}>2</Text>
+                            </View>
+                            <Text style={styles.stepTextActive}>Payment</Text>
+                        </View>
+                        <View style={styles.stepDivider} />
+                        <View style={styles.step}>
+                            <View style={styles.stepNumber}>
+                                <Text style={styles.stepNumberText}>3</Text>
+                            </View>
+                            <Text style={styles.stepText}>Review</Text>
+                        </View>
+                    </View>
+
+                    {/* Product Summary Card */}
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Order Summary</Text>
+                        {checkoutItems.map((item) => (
+                            <View key={item.id} style={styles.productCard}>
+                                <Image
+                                    source={{ uri: item.product.image || item.product.thumbnail }}
+                                    style={styles.productImage}
+                                />
+                                <View style={styles.productDetails}>
+                                    <Text style={styles.productName} numberOfLines={2}>
+                                        {item.product.name}
+                                    </Text>
+                                    <Text style={styles.productCategory}>{item.product.category}</Text>
+                                    <Text style={styles.productPrice}>
+                                        ${item.product.price.toLocaleString()}
+                                    </Text>
+
+                                    {/* Quantity Controls (hanya jika 1 item) */}
+                                    <View style={styles.quantitySection}>
+                                        <Text style={styles.quantityLabel}>Quantity:</Text>
+                                        {checkoutItems.length === 1 ? (
+                                            <View style={styles.quantityControls}>
+                                                <TouchableOpacity
+                                                    style={[styles.quantityButton, item.quantity <= 1 && styles.quantityButtonDisabled]}
+                                                    onPress={() => handleQuantityChange(-1)}
+                                                    disabled={item.quantity <= 1}
+                                                >
+                                                    <FontAwesome6 name="minus" size={14} color={item.quantity <= 1 ? '#9ca3af' : '#374151'} iconStyle='solid' />
+                                                </TouchableOpacity>
+                                                <Text style={styles.quantityText}>{item.quantity}</Text>
+                                                <TouchableOpacity
+                                                    style={[styles.quantityButton, item.quantity >= (item.product.stock || 10) && styles.quantityButtonDisabled]}
+                                                    onPress={() => handleQuantityChange(1)}
+                                                    disabled={item.quantity >= (item.product.stock || 10)}
+                                                >
+                                                    <FontAwesome6 name="plus" size={14} color={item.quantity >= (item.product.stock || 10) ? '#9ca3af' : '#374151'} iconStyle='solid' />
+                                                </TouchableOpacity>
+                                            </View>
+                                        ) : (
+                                            <Text style={styles.quantityTextStatic}>{item.quantity}</Text>
+                                        )}
+                                    </View>
+                                </View>
+                            </View>
+                        ))}
+                    </View>
+
+                    {/* Contact Information */}
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Contact Information</Text>
+                        <View style={styles.rowInput}>
+                            <View style={[styles.inputGroup, { flex: 1 }]}>
+                                <InputField
+                                    label="First Name"
+                                    field="firstName"
+                                    placeholder="John"
+                                    required
+                                />
+                            </View>
+                            <View style={[styles.inputGroup, { flex: 1 }]}>
+                                <InputField
+                                    label="Last Name"
+                                    field="lastName"
+                                    placeholder="Doe"
+                                    required
+                                />
                             </View>
                         </View>
 
-                        {/* Quantity Selector */}
-                        <View style={styles.quantitySection}>
-                            <Text style={styles.quantityLabel}>Quantity:</Text>
-                            <View style={styles.quantityControls}>
-                                <TouchableOpacity
-                                    style={styles.quantityButton}
-                                    onPress={() => handleQuantityChange(-1)}
-                                    disabled={quantity <= 1}
-                                >
-                                    <FontAwesome6 name="minus" size={16} color={quantity <= 1 ? '#ccc' : '#ffffff'}iconStyle='solid' />
-                                </TouchableOpacity>
-                                <Text style={styles.quantityText}>{quantity}</Text>
-                                <TouchableOpacity
-                                    style={styles.quantityButton}
-                                    onPress={() => handleQuantityChange(1)}
-                                    disabled={quantity >= 10}
-                                >
-                                    <FontAwesome6 name="plus" size={16} color={quantity >= 10 ? '#ccc' : '#ffffff'}iconStyle='solid' />
-                                </TouchableOpacity>
-                            </View>
-                        </View>
+                        <InputField
+                            label="Email Address"
+                            field="email"
+                            placeholder="john.doe@example.com"
+                            keyboardType="email-address"
+                            required
+                        />
+
+                        <InputField
+                            label="Phone Number"
+                            field="phone"
+                            placeholder="(555) 123-4567"
+                            keyboardType="phone-pad"
+                            required
+                        />
                     </View>
 
                     {/* Shipping Address */}
                     <View style={styles.section}>
-                        <View style={styles.sectionHeader}>
-                            <FontAwesome6 name="location-dot" size={20} color="#2196f3" iconStyle='solid'/>
-                            <Text style={styles.sectionTitle}>Shipping Address</Text>
-                        </View>
+                        <Text style={styles.sectionTitle}>Shipping Address</Text>
 
-                        {/* Full Name */}
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Full Name *</Text>
-                            <TextInput
-                                style={styles.textInput}
-                                placeholder="Enter your full name"
-                                placeholderTextColor="#888"
-                                value={formData.fullName}
-                                onChangeText={(value) => updateFormData('fullName', value)}
-                            />
-                        </View>
+                        <InputField
+                            label="Address Line 1"
+                            field="addressLine1"
+                            placeholder="Street address, P.O. box"
+                            required
+                        />
 
-                        {/* Street Address */}
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Street Address *</Text>
-                            <TextInput
-                                style={styles.textInput}
-                                placeholder="Street name and number"
-                                placeholderTextColor="#888"
-                                value={formData.streetAddress}
-                                onChangeText={(value) => updateFormData('streetAddress', value)}
-                            />
-                        </View>
+                        <InputField
+                            label="Address Line 2"
+                            field="addressLine2"
+                            placeholder="Apartment, suite, unit, building, floor, etc."
+                        />
 
-                        {/* City & Postal Code - Row */}
                         <View style={styles.rowInput}>
                             <View style={[styles.inputGroup, { flex: 2 }]}>
-                                <Text style={styles.inputLabel}>City *</Text>
-                                <TextInput
-                                    style={styles.textInput}
+                                <InputField
+                                    label="City"
+                                    field="city"
                                     placeholder="City"
-                                    placeholderTextColor="#888"
-                                    value={formData.city}
-                                    onChangeText={(value) => updateFormData('city', value)}
+                                    required
                                 />
                             </View>
                             <View style={[styles.inputGroup, { flex: 1 }]}>
-                                <Text style={styles.inputLabel}>Postal Code *</Text>
-                                <TextInput
-                                    style={styles.textInput}
-                                    placeholder="ZIP"
-                                    placeholderTextColor="#888"
-                                    keyboardType="numeric"
-                                    value={formData.postalCode}
-                                    onChangeText={(value) => updateFormData('postalCode', value)}
+                                <InputField
+                                    label="State"
+                                    field="state"
+                                    placeholder="State"
+                                    required
                                 />
                             </View>
                         </View>
 
-                        {/* Phone Number */}
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Phone Number *</Text>
-                            <TextInput
-                                style={styles.textInput}
-                                placeholder="Phone number"
-                                placeholderTextColor="#888"
-                                keyboardType="phone-pad"
-                                value={formData.phoneNumber}
-                                onChangeText={(value) => updateFormData('phoneNumber', value)}
-                            />
+                        <View style={styles.rowInput}>
+                            <View style={[styles.inputGroup, { flex: 1 }]}>
+                                <InputField
+                                    label="Postal Code"
+                                    field="postalCode"
+                                    placeholder="ZIP code"
+                                    keyboardType="numeric"
+                                    required
+                                />
+                            </View>
+                            <View style={[styles.inputGroup, { flex: 2 }]}>
+                                <InputField
+                                    label="Country"
+                                    field="country"
+                                    placeholder="Country"
+                                />
+                            </View>
                         </View>
                     </View>
 
+                    {/* Shipping Method */}
                     <View style={styles.section}>
-                        <View style={styles.sectionHeader}>
-                            <FontAwesome6 name="truck-fast" size={20} color='#dd901dff'iconStyle='solid' />
-                            <Text style={styles.sectionTitle}>Shipping Method</Text>
-                        </View>
+                        <Text style={styles.sectionTitle}>Shipping Method</Text>
 
-                        {/* Regular Shipping */}
-                        <TouchableOpacity
-                            style={[
-                                styles.shippingOption,
-                                shippingMethod === 'regular' && styles.shippingOptionSelected
-                            ]}
-                            onPress={() => setShippingMethod('regular')}
-                        >
-                            <View style={styles.shippingIconContainer}>
-                                <FontAwesome6 name="truck" size={20} color={shippingMethod === 'regular' ? '#4caf50' : '#dd901dff'}iconStyle='solid' />
-                            </View>
-                            <View style={styles.shippingInfo}>
+                        {(['standard', 'express', 'priority'] as ShippingMethod[]).map((method) => (
+                            <TouchableOpacity
+                                key={method}
+                                style={[
+                                    styles.shippingOption,
+                                    shippingMethod === method && styles.shippingOptionSelected
+                                ]}
+                                onPress={() => setShippingMethod(method)}
+                            >
+                                <View style={styles.shippingRadio}>
+                                    <View style={[
+                                        styles.radioCircle,
+                                        shippingMethod === method && styles.radioCircleSelected
+                                    ]}>
+                                        {shippingMethod === method && <View style={styles.radioInner} />}
+                                    </View>
+                                </View>
+                                <View style={styles.shippingInfo}>
+                                    <Text style={[
+                                        styles.shippingName,
+                                        shippingMethod === method && styles.shippingNameSelected
+                                    ]}>
+                                        {method.charAt(0).toUpperCase() + method.slice(1)} Shipping
+                                    </Text>
+                                    <Text style={[
+                                        styles.shippingDetails,
+                                        shippingMethod === method && styles.shippingDetailsSelected
+                                    ]}>
+                                        {getShippingTime()}
+                                    </Text>
+                                </View>
                                 <Text style={[
-                                    styles.shippingName,
-                                    shippingMethod === 'regular' && styles.shippingNameSelected
+                                    styles.shippingPrice,
+                                    shippingMethod === method && styles.shippingPriceSelected
                                 ]}>
-                                    Regular Shipping
+                                    ${getShippingFee().toFixed(2)}
                                 </Text>
-                                <Text style={[
-                                    styles.shippingDetails,
-                                    shippingMethod === 'regular' && styles.shippingDetailsSelected
-                                ]}>
-                                    3-5 business days • $5.99
-                                </Text>
-                            </View>
-                            <Text style={[
-                                styles.shippingPrice,
-                                shippingMethod === 'regular' && styles.shippingPriceSelected
-                            ]}>
-                                $5.99
-                            </Text>
-                        </TouchableOpacity>
-
-                        {/* Express Shipping */}
-                        <TouchableOpacity
-                            style={[
-                                styles.shippingOption,
-                                shippingMethod === 'express' && styles.shippingOptionSelected
-                            ]}
-                            onPress={() => setShippingMethod('express')}
-                        >
-                            <View style={styles.shippingIconContainer}>
-                                <FontAwesome6 name="bolt" size={20} color={shippingMethod === 'express' ? '#4caf50' : '#dd901dff'}iconStyle='solid' />
-                            </View>
-                            <View style={styles.shippingInfo}>
-                                <Text style={[
-                                    styles.shippingName,
-                                    shippingMethod === 'express' && styles.shippingNameSelected
-                                ]}>
-                                    Express Shipping
-                                </Text>
-                                <Text style={[
-                                    styles.shippingDetails,
-                                    shippingMethod === 'express' && styles.shippingDetailsSelected
-                                ]}>
-                                    1-2 business days • $12.99
-                                </Text>
-                            </View>
-                            <Text style={[
-                                styles.shippingPrice,
-                                shippingMethod === 'express' && styles.shippingPriceSelected
-                            ]}>
-                                $12.99
-                            </Text>
-                        </TouchableOpacity>
-
-                        {/* Container Shipping */}
-                        <TouchableOpacity
-                            style={[
-                                styles.shippingOption,
-                                shippingMethod === 'container' && styles.shippingOptionSelected
-                            ]}
-                            onPress={() => setShippingMethod('container')}
-                        >
-                            <View style={styles.shippingIconContainer}>
-                                <FontAwesome6 name="box" size={20} color={shippingMethod === 'container' ? '#4caf50' : '#dd901dff'} iconStyle='solid'/>
-                            </View>
-                            <View style={styles.shippingInfo}>
-                                <Text style={[
-                                    styles.shippingName,
-                                    shippingMethod === 'container' && styles.shippingNameSelected
-                                ]}>
-                                    Container Shipping
-                                </Text>
-                                <Text style={[
-                                    styles.shippingDetails,
-                                    shippingMethod === 'container' && styles.shippingDetailsSelected
-                                ]}>
-                                    Bulk items • 7-14 days • $25.99
-                                </Text>
-                            </View>
-                            <Text style={[
-                                styles.shippingPrice,
-                                shippingMethod === 'container' && styles.shippingPriceSelected
-                            ]}>
-                                $25.99
-                            </Text>
-                        </TouchableOpacity>
+                            </TouchableOpacity>
+                        ))}
                     </View>
 
                     {/* Payment Method */}
                     <View style={styles.section}>
-                        <View style={styles.sectionHeader}>
-                            <FontAwesome6 name="credit-card" size={20} color='#3d68b6ff' />
-                            <Text style={styles.sectionTitle}>Payment Method</Text>
-                        </View>
-                        <View style={styles.paymentOptions}>
-                            <TouchableOpacity
-                                style={[
-                                    styles.paymentOption,
-                                    paymentMethod === 'credit_card' && styles.paymentOptionSelected
-                                ]}
-                                onPress={() => setPaymentMethod('credit_card')}
-                            >
-                                <View style={styles.paymentIconContainer}>
-                                    <FontAwesome6 name="credit-card" size={20} color={paymentMethod === 'credit_card' ? '#278837ff' : '#3d68b6ff'} />
-                                </View>
-                                <Text style={[
-                                    styles.paymentText,
-                                    paymentMethod === 'credit_card' && styles.paymentTextSelected
-                                ]}>Credit Card</Text>
-                            </TouchableOpacity>
+                        <Text style={styles.sectionTitle}>Payment Method</Text>
 
-                            <TouchableOpacity
-                                style={[
-                                    styles.paymentOption,
-                                    paymentMethod === 'paypal' && styles.paymentOptionSelected
-                                ]}
-                                onPress={() => setPaymentMethod('paypal')}
-                            >
-                                <View style={styles.paymentIconContainer}>
-                                    <FontAwesome6 name="paypal" size={20} color={paymentMethod === 'paypal' ? '#278837ff' : '#3d68b6ff'} iconStyle='brand' />
+                        {/* Credit Card Option */}
+                        <TouchableOpacity
+                            style={[
+                                styles.paymentOption,
+                                paymentMethod === 'credit_card' && styles.paymentOptionSelected
+                            ]}
+                            onPress={() => setPaymentMethod('credit_card')}
+                        >
+                            <View style={styles.paymentRadio}>
+                                <View style={[
+                                    styles.radioCircle,
+                                    paymentMethod === 'credit_card' && styles.radioCircleSelected
+                                ]}>
+                                    {paymentMethod === 'credit_card' && <View style={styles.radioInner} />}
                                 </View>
-                                <Text style={[
-                                    styles.paymentText,
-                                    paymentMethod === 'paypal' && styles.paymentTextSelected
-                                ]}>PayPal</Text>
-                            </TouchableOpacity>
+                            </View>
+                            <View style={styles.paymentIconContainer}>
+                                <FontAwesome6
+                                    name="credit-card"
+                                    size={20}
+                                    color={paymentMethod === 'credit_card' ? '#ffffff' : '#6b7280'}
+                                />
+                            </View>
+                            <Text style={[
+                                styles.paymentText,
+                                paymentMethod === 'credit_card' && styles.paymentTextSelected
+                            ]}>
+                                Credit Card
+                            </Text>
+                        </TouchableOpacity>
 
-                            <TouchableOpacity
-                                style={[
-                                    styles.paymentOption,
-                                    paymentMethod === 'bank_transfer' && styles.paymentOptionSelected
-                                ]}
-                                onPress={() => setPaymentMethod('bank_transfer')}
-                            >
-                                <View style={styles.paymentIconContainer}>
-                                    <FontAwesome6 name="building-columns" size={20} color={paymentMethod === 'bank_transfer' ? '#278837ff' : '#3d68b6ff'}iconStyle='solid' />
+                        {/* PayPal Option */}
+                        <TouchableOpacity
+                            style={[
+                                styles.paymentOption,
+                                paymentMethod === 'paypal' && styles.paymentOptionSelected
+                            ]}
+                            onPress={() => setPaymentMethod('paypal')}
+                        >
+                            <View style={styles.paymentRadio}>
+                                <View style={[
+                                    styles.radioCircle,
+                                    paymentMethod === 'paypal' && styles.radioCircleSelected
+                                ]}>
+                                    {paymentMethod === 'paypal' && <View style={styles.radioInner} />}
                                 </View>
-                                <Text style={[
-                                    styles.paymentText,
-                                    paymentMethod === 'bank_transfer' && styles.paymentTextSelected
-                                ]}>Bank Transfer</Text>
-                            </TouchableOpacity>
-                        </View>
+                            </View>
+                            <View style={styles.paymentIconContainer}>
+                                <FontAwesome6
+                                    name="paypal"
+                                    size={20}
+                                    color={paymentMethod === 'paypal' ? '#ffffff' : '#6b7280'}
+                                    iconStyle='brand'
+                                />
+                            </View>
+                            <Text style={[
+                                styles.paymentText,
+                                paymentMethod === 'paypal' && styles.paymentTextSelected
+                            ]}>
+                                PayPal
+                            </Text>
+                        </TouchableOpacity>
+
+                        {/* Apple Pay Option */}
+                        <TouchableOpacity
+                            style={[
+                                styles.paymentOption,
+                                paymentMethod === 'apple_pay' && styles.paymentOptionSelected
+                            ]}
+                            onPress={() => setPaymentMethod('apple_pay')}
+                        >
+                            <View style={styles.paymentRadio}>
+                                <View style={[
+                                    styles.radioCircle,
+                                    paymentMethod === 'apple_pay' && styles.radioCircleSelected
+                                ]}>
+                                    {paymentMethod === 'apple_pay' && <View style={styles.radioInner} />}
+                                </View>
+                            </View>
+                            <View style={styles.paymentIconContainer}>
+                                <FontAwesome6
+                                    name="apple"
+                                    size={20}
+                                    color={paymentMethod === 'apple_pay' ? '#ffffff' : '#6b7280'}
+                                    iconStyle='brand'
+                                />
+                            </View>
+                            <Text style={[
+                                styles.paymentText,
+                                paymentMethod === 'apple_pay' && styles.paymentTextSelected
+                            ]}>
+                                Apple Pay
+                            </Text>
+                        </TouchableOpacity>
+
+                        {/* Credit Card Details */}
+                        {paymentMethod === 'credit_card' && (
+                            <View style={styles.cardDetails}>
+                                <InputField
+                                    label="Cardholder Name"
+                                    field="cardholderName"
+                                    placeholder="John Doe"
+                                    required
+                                />
+
+                                <InputField
+                                    label="Card Number"
+                                    field="cardNumber"
+                                    placeholder="1234 5678 9012 3456"
+                                    keyboardType="numeric"
+                                    required
+                                />
+
+                                <View style={styles.rowInput}>
+                                    <View style={[styles.inputGroup, { flex: 2 }]}>
+                                        <InputField
+                                            label="Expiry Date"
+                                            field="expiryDate"
+                                            placeholder="MM/YY"
+                                            keyboardType="numeric"
+                                            required
+                                        />
+                                    </View>
+                                    <View style={[styles.inputGroup, { flex: 1 }]}>
+                                        <InputField
+                                            label="CVV"
+                                            field="cvv"
+                                            placeholder="123"
+                                            keyboardType="numeric"
+                                            secureTextEntry
+                                            required
+                                        />
+                                    </View>
+                                </View>
+                            </View>
+                        )}
                     </View>
 
                     {/* Order Summary */}
                     <View style={styles.section}>
-                        <View style={styles.sectionHeader}>
-                            <FontAwesome6 name="receipt" size={20} color="#e91e63"iconStyle='solid' />
-                            <Text style={styles.sectionTitle}>Order Summary</Text>
-                        </View>
+                        <Text style={styles.sectionTitle}>Order Total</Text>
                         <View style={styles.orderSummary}>
                             <View style={styles.summaryRow}>
-                                <Text style={styles.summaryLabel}>Subtotal:</Text>
+                                <Text style={styles.summaryLabel}>Subtotal ({checkoutItems.reduce((sum, i) => sum + i.quantity, 0)} items)</Text>
                                 <Text style={styles.summaryValue}>${subtotal.toFixed(2)}</Text>
                             </View>
                             <View style={styles.summaryRow}>
-                                <Text style={styles.summaryLabel}>Shipping:</Text>
+                                <Text style={styles.summaryLabel}>Shipping</Text>
                                 <Text style={styles.summaryValue}>${shippingFee.toFixed(2)}</Text>
                             </View>
                             <View style={styles.summaryRow}>
-                                <Text style={styles.summaryLabel}>Tax (10%):</Text>
+                                <Text style={styles.summaryLabel}>Tax</Text>
                                 <Text style={styles.summaryValue}>${tax.toFixed(2)}</Text>
                             </View>
                             <View style={[styles.summaryRow, styles.totalRow]}>
-                                <Text style={styles.totalLabel}>Total:</Text>
+                                <Text style={styles.totalLabel}>Total</Text>
                                 <Text style={styles.totalValue}>${total.toFixed(2)}</Text>
                             </View>
                         </View>
                     </View>
+
+                    {/* Security Badge */}
+                    <View style={styles.securitySection}>
+                        <FontAwesome6 name="shield" size={16} color="#10b981" iconStyle='solid' />
+                        <Text style={styles.securityText}>
+                            Your payment information is secure and encrypted
+                        </Text>
+                    </View>
                 </ScrollView>
 
-                {/* Checkout Button */}
+                {/* Fixed Footer */}
                 <View style={styles.footer}>
-                    <TouchableOpacity
-                        style={[
-                            styles.checkoutButton,
-                            (isProcessing || !isFormValid) && styles.checkoutButtonDisabled
-                        ]}
-                        onPress={handleCheckout}
-                        disabled={isProcessing || !isFormValid}
-                    >
-                        {isProcessing ? (
-                            <>
-                                <FontAwesome6 name="spinner" size={16} color="#ffffff"iconStyle='solid' />
-                                <Text style={styles.checkoutButtonText}> Processing...</Text>
-                            </>
-                        ) : (
-                            <>
-                                <FontAwesome6 name="bag-shopping" size={16} color="#ffffff"iconStyle='solid' />
-                                <Text style={styles.checkoutButtonText}> Place Order - ${total.toFixed(2)}</Text>
-                            </>
-                        )}
-                    </TouchableOpacity>
+                    <View style={styles.footerContent}>
+                        <View style={styles.totalContainer}>
+                            <Text style={styles.footerTotalLabel}>Total Amount</Text>
+                            <Text style={styles.footerTotalValue}>${total.toFixed(2)}</Text>
+                        </View>
+                        <TouchableOpacity
+                            style={[
+                                styles.checkoutButton,
+                                (isProcessing || !isFormValid) && styles.checkoutButtonDisabled
+                            ]}
+                            onPress={handleCheckout}
+                            disabled={isProcessing || !isFormValid}
+                        >
+                            {isProcessing ? (
+                                <>
+                                    <FontAwesome6 name="spinner" size={16} color="#ffffff" iconStyle='solid' />
+                                    <Text style={styles.checkoutButtonText}> Processing Payment...</Text>
+                                </>
+                            ) : (
+                                <>
+                                    <FontAwesome6 name="lock" size={16} color="#ffffff" iconStyle='solid' />
+                                    <Text style={styles.checkoutButtonText}> Pay ${total.toFixed(2)}</Text>
+                                </>
+                            )}
+                        </TouchableOpacity>
+                    </View>
                 </View>
-            </View>
+            </KeyboardAvoidingView>
         </Modal>
     );
 };
@@ -454,274 +668,192 @@ const CheckoutModalScreen = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f0f7f0',
+        backgroundColor:'#9bf89bff',
     },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: 20,
-        paddingTop: 10,
-        backgroundColor: '#2e7d32',
-        borderBottomLeftRadius: 20,
-        borderBottomRightRadius: 20,
-        elevation: 8,
+        alignItems: 'flex-start',
+        padding: 24,
+        paddingTop: Platform.OS === 'ios' ? 60 : 24,
+        backgroundColor: '#ffffff',
+        borderBottomWidth: 1,
+        borderBottomColor: '#e5e7eb',
         shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 4,
-        },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 3,
+        elevation: 3,
+    },
+    headerContent: {
+        flex: 1,
     },
     headerTitle: {
         fontSize: 24,
-        fontWeight: 'bold',
-        color: '#ffffff',
+        fontWeight: '700',
+        color: '#111827',
+        marginBottom: 4,
+    },
+    headerSubtitle: {
+        fontSize: 14,
+        color: '#6b7280',
+        fontWeight: '500',
     },
     closeButton: {
-        padding: 10,
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
-        borderRadius: 20,
+        padding: 8,
+        borderRadius: 8,
+        backgroundColor: '#f3f4f6',
     },
     content: {
         flex: 1,
+    },
+    scrollContent: {
         padding: 16,
+        paddingBottom: 120,
+    },
+    progressSteps: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 24,
+        paddingHorizontal: 20,
+    },
+    step: {
+        alignItems: 'center',
+        flex: 1,
+    },
+    stepActive: {
+        // Active step styles
+    },
+    stepNumber: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: '#f3f4f6',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    stepNumberActive: {
+        backgroundColor: '#10b981',
+    },
+    stepNumberText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#9ca3af',
+    },
+    stepText: {
+        fontSize: 12,
+        color: '#9ca3af',
+        fontWeight: '500',
+    },
+    stepTextActive: {
+        color: '#10b981',
+        fontWeight: '600',
+    },
+    stepDivider: {
+        flex: 1,
+        height: 2,
+        backgroundColor: '#e5e7eb',
+        marginHorizontal: 8,
+        marginBottom: 20,
     },
     section: {
         backgroundColor: '#ffffff',
         padding: 20,
-        borderRadius: 16,
+        borderRadius: 12,
         marginBottom: 16,
-        elevation: 4,
-        shadowColor: '#2e7d32',
-        shadowOffset: {
-            width: 0,
-            height: 3,
-        },
-        shadowOpacity: 0.1,
-        shadowRadius: 6,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 3,
+        elevation: 2,
         borderWidth: 1,
-        borderColor: '#e8f5e9',
-    },
-    sectionHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 16,
-        gap: 12,
+        borderColor: '#f3f4f6',
     },
     sectionTitle: {
         fontSize: 18,
-        fontWeight: 'bold',
-        color: '#2e7d32',
+        fontWeight: '600',
+        color: '#111827',
+        marginBottom: 16,
     },
-    productSummary: {
+    productCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#f8fff8',
-        padding: 12,
-        borderRadius: 12,
+        padding: 16,
+        backgroundColor: '#f8fafc',
+        borderRadius: 8,
         borderWidth: 1,
-        borderColor: '#e8f5e9',
+        borderColor: '#e5e7eb',
     },
     productImage: {
         width: 80,
         height: 80,
-        borderRadius: 12,
+        borderRadius: 8,
         marginRight: 16,
-        borderWidth: 2,
-        borderColor: '#4caf50',
     },
-    productInfo: {
+    productDetails: {
         flex: 1,
     },
     productName: {
         fontSize: 16,
-        fontWeight: '700',
-        color: '#1b5e20',
+        fontWeight: '600',
+        color: '#111827',
         marginBottom: 4,
     },
     productCategory: {
         fontSize: 14,
-        color: '#4caf50',
-        fontWeight: '600',
-        marginBottom: 4,
+        color: '#6b7280',
+        marginBottom: 8,
     },
     productPrice: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: '#2e7d32',
+        fontSize: 18,
+        fontWeight: '700',
+        color: '#059669',
+        marginBottom: 12,
     },
     quantitySection: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        marginTop: 16,
-        paddingTop: 16,
-        borderTopWidth: 1,
-        borderTopColor: '#e8f5e9',
+        justifyContent: 'space-between',
     },
     quantityLabel: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#1b5e20',
+        fontSize: 14,
+        color: '#6b7280',
+        fontWeight: '500',
     },
     quantityControls: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 16,
-        backgroundColor: '#4caf50',
-        padding: 8,
-        borderRadius: 25,
+        backgroundColor: '#ffffff',
+        borderWidth: 1,
+        borderColor: '#d1d5db',
+        borderRadius: 8,
+        padding: 4,
     },
     quantityButton: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: '#2e7d32',
+        width: 32,
+        height: 32,
+        borderRadius: 6,
+        backgroundColor: '#f9fafb',
         justifyContent: 'center',
         alignItems: 'center',
-        elevation: 2,
+    },
+    quantityButtonDisabled: {
+        backgroundColor: '#f3f4f6',
     },
     quantityText: {
-        fontSize: 16,
-        fontWeight: 'bold',
-        color: '#ffffff',
-        minWidth: 24,
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#374151',
+        marginHorizontal: 16,
+        minWidth: 20,
         textAlign: 'center',
     },
-    textInput: {
-        backgroundColor: '#f8fff8',
-        borderWidth: 2,
-        borderColor: '#c8e6c9',
-        borderRadius: 12,
-        padding: 16,
-        fontSize: 16,
-        color: '#1b5e20',
-        fontWeight: '500',
-    },
-    paymentOptions: {
-        gap: 12,
-    },
-    paymentOption: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 16,
-        borderRadius: 12,
-        borderWidth: 2,
-        borderColor: '#c8e6c9',
-        backgroundColor: '#f8fff8',
-        gap: 16,
-    },
-    paymentOptionSelected: {
-        borderColor: '#2e7d32',
-        backgroundColor: '#2e7d32',
-        elevation: 4,
-        shadowColor: '#2e7d32',
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-    },
-    paymentIconContainer: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: '#e8f5e9',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    paymentText: {
-        fontSize: 16,
-        color: '#2e7d32',
+    quantityTextStatic: {
+        fontSize: 14,
         fontWeight: '600',
-    },
-    paymentTextSelected: {
-        color: '#ffffff',
-        fontWeight: 'bold',
-    },
-    orderSummary: {
-        gap: 12,
-        backgroundColor: '#f8fff8',
-        padding: 16,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: '#e8f5e9',
-    },
-    summaryRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingVertical: 4,
-    },
-    summaryLabel: {
-        fontSize: 16,
-        color: '#4caf50',
-        fontWeight: '500',
-    },
-    summaryValue: {
-        fontSize: 16,
-        color: '#1b5e20',
-        fontWeight: '600',
-    },
-    totalRow: {
-        paddingTop: 12,
-        borderTopWidth: 2,
-        borderTopColor: '#4caf50',
-        marginTop: 8,
-    },
-    totalLabel: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: '#2e7d32',
-    },
-    totalValue: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: '#2e7d32',
-    },
-    footer: {
-        padding: 20,
-        backgroundColor: '#1b5e20',
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
-        elevation: 8,
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: -4,
-        },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-    },
-    checkoutButton: {
-        backgroundColor: '#4caf50',
-        padding: 18,
-        borderRadius: 12,
-        alignItems: 'center',
-        flexDirection: 'row',
-        justifyContent: 'center',
-        elevation: 6,
-        shadowColor: '#2e7d32',
-        shadowOffset: {
-            width: 0,
-            height: 3,
-        },
-        shadowOpacity: 0.4,
-        shadowRadius: 6,
-    },
-    checkoutButtonDisabled: {
-        backgroundColor: '#a5d6a7',
-        elevation: 0,
-        shadowOpacity: 0,
-    },
-    checkoutButtonText: {
-        color: '#ffffff',
-        fontSize: 18,
-        fontWeight: 'bold',
-        marginLeft: 8,
+        color: '#374151',
     },
     inputGroup: {
         marginBottom: 16,
@@ -729,8 +861,24 @@ const styles = StyleSheet.create({
     inputLabel: {
         fontSize: 14,
         fontWeight: '600',
-        color: '#2e7d32',
+        color: '#374151',
         marginBottom: 8,
+    },
+    required: {
+        color: '#ef4444',
+    },
+    textInput: {
+        backgroundColor: '#ffffff',
+        borderWidth: 1,
+        borderColor: '#d1d5db',
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 16,
+        color: '#111827',
+        fontWeight: '500',
+    },
+    inputError: {
+        borderColor: '#ef4444',
     },
     rowInput: {
         flexDirection: 'row',
@@ -740,61 +888,215 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         padding: 16,
-        borderRadius: 12,
-        borderWidth: 2,
-        borderColor: '#c8e6c9',
-        backgroundColor: '#f8fff8',
-        marginBottom: 12,
-        gap: 16,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#d1d5db',
+        backgroundColor: '#ffffff',
+        marginBottom: 8,
     },
     shippingOptionSelected: {
-        borderColor: '#2e7d32',
-        backgroundColor: '#2e7d32',
-        elevation: 4,
-        shadowColor: '#2e7d32',
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
+        borderColor: '#10b981',
+        backgroundColor: '#f0fdf4',
     },
-    shippingIconContainer: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: '#e8f5e9',
+    shippingRadio: {
+        marginRight: 12,
+    },
+    radioCircle: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        borderWidth: 2,
+        borderColor: '#d1d5db',
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    radioCircleSelected: {
+        borderColor: '#10b981',
+        backgroundColor: '#10b981',
+    },
+    radioInner: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: '#ffffff',
     },
     shippingInfo: {
         flex: 1,
     },
     shippingName: {
         fontSize: 16,
-        color: '#2e7d32',
-        fontWeight: '600',
+        color: '#374151',
+        fontWeight: '500',
         marginBottom: 4,
     },
     shippingNameSelected: {
-        color: '#ffffff',
-        fontWeight: 'bold',
+        color: '#065f46',
+        fontWeight: '600',
     },
     shippingDetails: {
-        fontSize: 12,
-        color: '#4caf50',
-        fontWeight: '500',
+        fontSize: 14,
+        color: '#6b7280',
     },
     shippingDetailsSelected: {
-        color: '#e8f5e9',
+        color: '#047857',
     },
     shippingPrice: {
         fontSize: 16,
-        color: '#2e7d32',
-        fontWeight: 'bold',
+        color: '#374151',
+        fontWeight: '600',
     },
     shippingPriceSelected: {
+        color: '#065f46',
+    },
+    paymentOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#d1d5db',
+        backgroundColor: '#ffffff',
+        marginBottom: 8,
+    },
+    paymentOptionSelected: {
+        borderColor: '#10b981',
+        backgroundColor: '#f0fdf4',
+    },
+    paymentRadio: {
+        marginRight: 12,
+    },
+    paymentIconContainer: {
+        marginRight: 12,
+        width: 40,
+        height: 40,
+        borderRadius: 8,
+        backgroundColor: '#f8fafc',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    paymentText: {
+        fontSize: 16,
+        color: '#374151',
+        fontWeight: '500',
+    },
+    paymentTextSelected: {
+        color: '#065f46',
+        fontWeight: '600',
+    },
+    cardDetails: {
+        marginTop: 16,
+        padding: 16,
+        backgroundColor: '#f8fafc',
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#e5e7eb',
+    },
+    orderSummary: {
+        gap: 12,
+    },
+    summaryRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 4,
+    },
+    summaryLabel: {
+        fontSize: 16,
+        color: '#6b7280',
+        fontWeight: '500',
+    },
+    summaryValue: {
+        fontSize: 16,
+        color: '#374151',
+        fontWeight: '500',
+    },
+    totalRow: {
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: '#e5e7eb',
+        marginTop: 4,
+    },
+    totalLabel: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: '#111827',
+    },
+    totalValue: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: '#059669',
+    },
+    securitySection: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+        gap: 8,
+    },
+    securityText: {
+        fontSize: 14,
+        color: '#6b7280',
+        fontWeight: '500',
+    },
+    footer: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: '#ffffff',
+        borderTopWidth: 1,
+        borderTopColor: '#e5e7eb',
+        padding: 16,
+        paddingBottom: Platform.OS === 'ios' ? 34 : 16,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 8,
+    },
+    footerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 16,
+    },
+    totalContainer: {
+        flex: 1,
+    },
+    footerTotalLabel: {
+        fontSize: 14,
+        color: '#6b7280',
+        fontWeight: '500',
+        marginBottom: 2,
+    },
+    footerTotalValue: {
+        fontSize: 20,
+        fontWeight: '700',
+        color: '#059669',
+    },
+    checkoutButton: {
+        flex: 2,
+        backgroundColor: '#059669',
+        padding: 16,
+        borderRadius: 12,
+        alignItems: 'center',
+        flexDirection: 'row',
+        justifyContent: 'center',
+        shadowColor: '#059669',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 6,
+    },
+    checkoutButtonDisabled: {
+        backgroundColor: '#9ca3af',
+        shadowOpacity: 0,
+        elevation: 0,
+    },
+    checkoutButtonText: {
         color: '#ffffff',
+        fontSize: 16,
+        fontWeight: '600',
+        marginLeft: 8,
     },
 });
 

@@ -8,14 +8,15 @@ import {
   Image,
   Alert,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { HomeStackParamList } from '../../types';
-import { initialProducts } from '../../data/initialProducts';
 import { AuthContext } from '../../context/AuthContext';
+import { productApi } from '../../services/api/productApi';
+import { Product } from '../../types';
 
-// Menggunakan DrawerNavigationProp untuk mendapatkan akses ke toggleDrawer, dll.
 type HomeScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList>;
 
 const HomeScreen = () => {
@@ -23,25 +24,34 @@ const HomeScreen = () => {
   const { isAuthenticated, user, logout } = useContext(AuthContext);
 
   const [isRefreshing, setRefreshing] = useState(false);
-  const [products, setProducts] = useState(initialProducts.slice(0, 4));
+  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const sampleProducts = products;
+  // Fetch featured products dari API
+  const fetchFeaturedProducts = useCallback(async () => {
+    try {
+      setError(null);
+      // Ambil produk populer dari API
+      const popularProducts = await productApi.getPopularProducts(4);
+      setFeaturedProducts(popularProducts);
+    } catch (err) {
+      setError('Failed to load featured products');
+      console.error('Error fetching featured products:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-
-    // Simulate API call or data refresh
-    setTimeout(() => {
-      // Shuffle products to show refresh effect
-      const shuffled = [...initialProducts]
-        .sort(() => Math.random() - 0.5)
-        .slice(0, 4);
-      setProducts(shuffled);
+    fetchFeaturedProducts().finally(() => {
       setRefreshing(false);
-    }, 1500);
-  }, []);
+    });
+  }, [fetchFeaturedProducts]);
 
-  const handleProductPress = (productId: string) => {
+  // Handle product press dengan kondisi login
+  const handleProductPress = (product: Product) => {
     if (!isAuthenticated) {
       Alert.alert(
         'Login Required',
@@ -59,7 +69,8 @@ const HomeScreen = () => {
       );
       return;
     }
-    navigation.navigate('ProductDetail', { productId });
+    // Jika sudah login, navigasi ke detail product
+    navigation.navigate('ProductDetail', { productId: product.id });
   };
 
   const handleExploreCategories = () => {
@@ -80,21 +91,21 @@ const HomeScreen = () => {
       );
       return;
     }
-    // Membuka drawer dan menavigasi ke layar Categories
     navigation.dispatch(DrawerActions.jumpTo('CategoriesWithBottomTabs'));
+  };
+
+  const handleExploreAllProducts = () => {
+    navigation.navigate('ProductList');
   };
 
   const handleLogin = () => {
     navigation.navigate('Login');
   };
 
+  // Load featured products pertama kali
   useEffect(() => {
-    if (isAuthenticated && navigation.canGoBack()) {
-      // Jika sudah login dan ada history, pastikan kita di home
-      navigation.navigate('Home');
-    }
-  }, [isAuthenticated, navigation]);
-
+    fetchFeaturedProducts();
+  }, [fetchFeaturedProducts]);
 
   useEffect(() => {
     if (isAuthenticated && navigation.canGoBack()) {
@@ -102,6 +113,25 @@ const HomeScreen = () => {
     }
   }, [isAuthenticated, navigation]);
 
+  // Component untuk loading state
+  const renderLoading = () => (
+    <View style={styles.loadingContainer}>
+      <ActivityIndicator size="large" color="#2e7d32" />
+      <Text style={styles.loadingText}>Loading featured products...</Text>
+    </View>
+  );
+
+  // Component untuk error state
+  const renderError = () => (
+    <View style={styles.errorContainer}>
+      <Text style={styles.errorIcon}>❌</Text>
+      <Text style={styles.errorTitle}>Failed to Load</Text>
+      <Text style={styles.errorText}>{error}</Text>
+      <TouchableOpacity style={styles.retryButton} onPress={fetchFeaturedProducts}>
+        <Text style={styles.retryButtonText}>Try Again</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
     <ScrollView
@@ -113,15 +143,13 @@ const HomeScreen = () => {
           onRefresh={onRefresh}
           colors={['#2e7d32']}
           tintColor="#2e7d32"
-          title="Pull to refresh..."
-          titleColor="#2e7d32"
         />
       }
     >
       {/* Hero Section */}
       <View style={styles.heroSection}>
         <Text style={styles.heroTitle}>
-          {isAuthenticated ? `Welcome, ${user?.name}! 🌱` : 'Welcome to Eco Store! 🌱'}
+          {isAuthenticated ? `Welcome, ${user?.name || 'User'}! 🌱` : 'Welcome to Eco Store! 🌱'}
         </Text>
         <Text style={styles.heroSubtitle}>
           Discover sustainable and eco-friendly products that care for our planet
@@ -151,41 +179,84 @@ const HomeScreen = () => {
         )}
       </View>
 
-      {/* Sample Products Section */}
+      {/* Featured Products Section */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Featured Eco Products</Text>
           <Text style={styles.refreshHint}>↓ Pull down to refresh</Text>
         </View>
         <Text style={styles.sectionSubtitle}>
-          Here are some samples of our sustainable products
+          Handpicked sustainable products just for you
         </Text>
 
-        <View style={styles.productsGrid}>
-          {sampleProducts.map((product) => (
-            <TouchableOpacity
-              key={product.id}
-              style={styles.productCard}
-              onPress={() => handleProductPress(product.id)}
-            >
-              <Image source={{ uri: product.image }} style={styles.productImage} />
-              <View style={styles.productInfo}>
-                <Text style={styles.productName} numberOfLines={2}>
-                  {product.name}
-                </Text>
-                <Text style={styles.productPrice}>${product.price.toLocaleString()}</Text>
-                {!isAuthenticated && (
-                  <Text style={styles.loginHint}>Login to view details</Text>
-                )}
-              </View>
-              {product.isNew && (
-                <View style={styles.newBadge}>
-                  <Text style={styles.newBadgeText}>NEW</Text>
+        <TouchableOpacity
+          style={styles.categoriesButton}
+          onPress={handleExploreAllProducts}
+        >
+          <Text style={styles.categoriesButtonText}>
+            Lihat Semua Produk
+          </Text>
+        </TouchableOpacity>
+
+        {/* Loading State */}
+        {loading && !isRefreshing && renderLoading()}
+
+        {/* Error State */}
+        {error && !loading && renderError()}
+
+        {/* Products Grid */}
+        {!loading && !error && (
+          <View style={styles.productsGrid}>
+            {featuredProducts.map((product) => (
+              <TouchableOpacity
+                key={product.id}
+                style={styles.productCard}
+                onPress={() => handleProductPress(product)}
+              >
+                <Image 
+                  source={{ uri: product.image }} 
+                  style={styles.productImage} 
+                  resizeMode="cover"
+                />
+                <View style={styles.productInfo}>
+                  <Text style={styles.productName} numberOfLines={2}>
+                    {product.name}
+                  </Text>
+                  <Text style={styles.productPrice}>${product.price.toLocaleString()}</Text>
+                  
+                  {/* Badge Container */}
+                  <View style={styles.badgeContainer}>
+                    {product.isNew && (
+                      <View style={styles.newBadge}>
+                        <Text style={styles.newBadgeText}>NEW</Text>
+                      </View>
+                    )}
+                    {product.discount && product.discount > 0 && (
+                      <View style={styles.discountBadge}>
+                        <Text style={styles.discountBadgeText}>{product.discount}% OFF</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {!isAuthenticated && (
+                    <Text style={styles.loginHint}>Login to view details</Text>
+                  )}
                 </View>
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Empty State */}
+        {!loading && !error && featuredProducts.length === 0 && (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyIcon}>📦</Text>
+            <Text style={styles.emptyTitle}>No Featured Products</Text>
+            <Text style={styles.emptyText}>
+              Check back later for featured eco products!
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Categories Preview */}
@@ -366,6 +437,71 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     lineHeight: 22,
   },
+  // Loading Styles
+  loadingContainer: {
+    alignItems: 'center',
+    padding: 40,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#2e7d32',
+  },
+  // Error Styles
+  errorContainer: {
+    alignItems: 'center',
+    padding: 40,
+  },
+  errorIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#d32f2f',
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 22,
+  },
+  retryButton: {
+    backgroundColor: '#2e7d32',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  // Empty State Styles
+  emptyContainer: {
+    alignItems: 'center',
+    padding: 40,
+  },
+  emptyIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#2e7d32',
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  // Products Grid
   productsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -406,17 +542,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#2e7d32',
+    marginBottom: 6,
+  },
+  // Badge Container
+  badgeContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
     marginBottom: 4,
   },
-  loginHint: {
-    fontSize: 10,
-    color: '#ff9800',
-    fontStyle: 'italic',
-  },
   newBadge: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
     backgroundColor: '#4caf50',
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -426,6 +561,22 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  discountBadge: {
+    backgroundColor: '#ff5722',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  discountBadgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  loginHint: {
+    fontSize: 10,
+    color: '#ff9800',
+    fontStyle: 'italic',
   },
   categoriesButton: {
     backgroundColor: '#2e7d32',

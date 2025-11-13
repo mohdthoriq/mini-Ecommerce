@@ -7,11 +7,14 @@ import CustomDrawerContent from '../components/CustomDrawerContent';
 import BottomTabsNavigator from './BottomTabsNavigator';
 import HomeScreen from '../screens/dashboard/Home';
 import { Text, TouchableOpacity, View } from 'react-native';
+import { useCart } from '../context/CartContext';
 import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 import { useSwipe } from '../context/SwipeContext';
 import { useDrawerLock } from '../hooks/useDrawerLock';
 import ProductDetailScreen from '../screens/dashboard/ProductDetailScreen';
 import CheckoutModalScreen from '../screens/dashboard/CheckoutModal';
+import CartScreen from '../screens/dashboard/Cart';
+import ProductListScreen from '../screens/dashboard/ProductListScreen';
 import AnalyticsHistoryScreen from '../screens/dashboard/AnalyticsHistory';
 import ProfileScreen from '../screens/dashboard/Profile';
 
@@ -21,6 +24,7 @@ const Drawer = createDrawerNavigator<RootDrawerParamList>();
 const DrawerNavigator = () => {
   const { canSwipe } = useSwipe();
   const { shouldLockDrawer, drawerLockMode } = useDrawerLock()
+  const { cartItemCount } = useCart();
 
   return (
     <Drawer.Navigator
@@ -28,7 +32,7 @@ const DrawerNavigator = () => {
       screenOptions={({ navigation, route }) => {
 
         const lockedScreens = ['ProductDetail', 'CheckoutModal'];
-        const shouldLockDrawer = lockedScreens.includes(route.name);
+        const isDrawerLocked = lockedScreens.includes(route.name);
 
 
         const drawerLockMode = shouldLockDrawer ? 'locked-closed' : 'unlocked';
@@ -80,6 +84,27 @@ const DrawerNavigator = () => {
               );
             }
           },
+          headerRight: () => (
+            <TouchableOpacity
+              style={{ marginRight: 16, position: 'relative' }}
+              onPress={() => navigation.navigate('Cart')}
+            >
+              <FontAwesome6 name="cart-shopping" size={24} color="#ffffff" iconStyle='solid' />
+              {cartItemCount > 0 && (
+                <View style={{
+                  position: 'absolute', right: -8, top: -4, backgroundColor: '#ef4444', borderRadius: 10, width: 20, height: 20, justifyContent: 'center', alignItems: 'center'
+                }}>
+                  <Text style={{
+                    color: '#ffffff',
+                    fontSize: 12,
+                    fontWeight: 'bold'
+                  }}>
+                    {cartItemCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ),
           drawerStyle: {
             backgroundColor: '#f0f7f0',
             width: 280,
@@ -92,7 +117,7 @@ const DrawerNavigator = () => {
           drawerActiveBackgroundColor: '#4caf50',
           drawerActiveTintColor: '#ffffff',
           drawerInactiveTintColor: '#2e7d32',
-          swipeEnabled: canSwipe && !shouldLockDrawer,
+          swipeEnabled: canSwipe && !isDrawerLocked,
           drawerLockMode: drawerLockMode,
         };
       }}
@@ -172,6 +197,25 @@ const DrawerNavigator = () => {
           drawerItemStyle: { display: 'none' },
         }}
       />
+
+      <Drawer.Screen
+        name="Cart"
+        component={CartScreen}
+        options={{
+          title: 'Shopping Cart',
+          drawerItemStyle: { display: 'none' },
+        }}
+      />
+
+      <Drawer.Screen
+        name="ProductList"
+        component={ProductListScreen}
+        options={{
+          title: 'All Products',
+          drawerItemStyle: { display: 'none' }, // Sembunyikan dari drawer menu jika tidak ingin ditampilkan
+        }}
+      />
+
     </Drawer.Navigator>
   );
 };

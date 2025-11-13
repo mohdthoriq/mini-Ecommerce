@@ -1,48 +1,127 @@
-import React from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, Image } from 'react-native';
+// src/screens/PopularScreen.tsx
+import React, { useState, useEffect } from 'react';
+import { 
+  View, 
+  Text, 
+  FlatList, 
+  StyleSheet, 
+  TouchableOpacity, 
+  Image, 
+  ActivityIndicator,
+  Alert,
+  RefreshControl 
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { HomeStackParamList } from '../../types';
-import { initialProducts } from '../../data/initialProducts';
+import { HomeStackParamList, Product } from '../../types'; // ✅ Path yang benar
 import { useDynamicHeader } from '../../hooks/useDynamicHeader';
+import { productApi } from '../../services/api/productApi'; // ✅ Path yang benar
 
 type PopularScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList>;
 
 const PopularScreen = () => {
   const navigation = useNavigation<PopularScreenNavigationProp>();
+  const [popularProducts, setPopularProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-   useDynamicHeader(
+  useDynamicHeader(
     navigation, 
-    'Jelajahi Produk', // Title default
-    'Product ter Populer!' // Title ketika focused
+    'Jelajahi Produk',
+    'Product ter Populer!'
   );
 
-  const popularProducts = initialProducts.filter(product => 
-    product.category === 'popular' || product.price < 300000
-  );
+  // Fetch popular products using productApi
+  const fetchPopularProducts = async () => {
+    try {
+      const products = await productApi.getPopularProducts(12);
+      setPopularProducts(products);
+    } catch (error: any) {
+      console.error('Error in PopularScreen:', error);
+      Alert.alert('Error', error.message || 'Failed to load popular products');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchPopularProducts();
+  };
+
+  useEffect(() => {
+    fetchPopularProducts();
+  }, []);
 
   const handleProductPress = (productId: string) => {
     navigation.navigate('ProductDetail', { productId });
   };
 
-  const renderProductItem = ({ item }: { item: any }) => (
+  const formatPrice = (price: number) => {
+    return `$${price.toFixed(2)}`;
+  };
+
+  const calculateDiscountPrice = (price: number, discount?: number) => {
+    if (!discount) return price;
+    return price - (price * discount / 100);
+  };
+
+  const renderProductItem = ({ item }: { item: Product }) => (
     <TouchableOpacity 
       style={styles.productCard}
       onPress={() => handleProductPress(item.id)}
     >
       <Image source={{ uri: item.image }} style={styles.productImage} />
-      <View style={styles.productInfo}>
-        <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
-        <Text style={styles.productPrice}>${item.price.toLocaleString()}</Text>
-        <Text style={styles.productCategory}>{item.category}</Text>
-      </View>
+      
+      {item.discount && item.discount > 0 && (
+        <View style={styles.discountBadge}>
+          <Text style={styles.discountText}>-{item.discount}%</Text>
+        </View>
+      )}
+      
       {item.isNew && (
         <View style={styles.newBadge}>
           <Text style={styles.newBadgeText}>NEW</Text>
         </View>
       )}
+
+      <View style={styles.productInfo}>
+        <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
+        <Text style={styles.productCategory}>{item.category}</Text>
+        
+        <View style={styles.priceContainer}>
+          {item.discount && item.discount > 0 ? (
+            <>
+              <Text style={styles.originalPrice}>
+                {formatPrice(item.price)}
+              </Text>
+              <Text style={styles.discountPrice}>
+                {formatPrice(calculateDiscountPrice(item.price, item.discount))}
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.normalPrice}>
+              {formatPrice(item.price)}
+            </Text>
+          )}
+        </View>
+
+        <Text style={styles.productDescription} numberOfLines={2}>
+          {item.description}
+        </Text>
+      </View>
     </TouchableOpacity>
   );
+
+  if (loading && !refreshing) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#2e7d32" />
+        <Text style={styles.loadingText}>Loading popular products...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -55,16 +134,43 @@ const PopularScreen = () => {
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#2e7d32']}
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No popular products found</Text>
+            <Text style={styles.emptySubtext}>
+              Check back later for trending items
+            </Text>
+          </View>
+        }
       />
     </View>
   );
 };
 
+// Styles remain the same...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#9bf89bff',
     padding: 16,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#9bf89bff',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#2e7d32',
   },
   title: {
     fontSize: 24,
@@ -94,6 +200,7 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.1,
     shadowRadius: 3.84,
+    position: 'relative',
   },
   productImage: {
     width: 80,
@@ -111,30 +218,83 @@ const styles = StyleSheet.create({
     color: '#2e7d32',
     marginBottom: 4,
   },
-  productPrice: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2e7d32',
-    marginBottom: 4,
-  },
   productCategory: {
     fontSize: 12,
     color: '#666',
     textTransform: 'capitalize',
+    marginBottom: 6,
+  },
+  priceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  originalPrice: {
+    fontSize: 14,
+    color: '#999',
+    textDecorationLine: 'line-through',
+    marginRight: 8,
+  },
+  discountPrice: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2e7d32',
+  },
+  normalPrice: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2e7d32',
+  },
+  productDescription: {
+    fontSize: 12,
+    color: '#888',
+    lineHeight: 16,
+  },
+  discountBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    backgroundColor: '#ff4444',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    zIndex: 1,
+  },
+  discountText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   newBadge: {
     position: 'absolute',
     top: 12,
     right: 12,
-    backgroundColor: '#ff5722',
+    backgroundColor: '#4caf50',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
+    zIndex: 1,
   },
   newBadgeText: {
     color: '#ffffff',
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+  },
+  emptyText: {
+    fontSize: 18,
+    color: '#666',
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
   },
 });
 

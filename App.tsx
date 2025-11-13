@@ -39,19 +39,22 @@ import { AuthProvider } from './src/context/AuthContext';
 import { SwipeProvider } from './src/context/SwipeContext';
 import AnalyticsNavigationContainer from './src/routes/AnalyticsNavigationContainer';
 import Navigation from './src/routes';
+import { CartProvider } from './src/context/CartContext';
 
 const App = () => {
   return (
     <AuthProvider>
-      <SwipeProvider>
-        <AnalyticsNavigationContainer>
-          <StatusBar 
-            backgroundColor="#2e7d32" 
-            barStyle="light-content" 
-          />
-          <Navigation />
-        </AnalyticsNavigationContainer>
-      </SwipeProvider>
+      <CartProvider>
+        <SwipeProvider>
+          <AnalyticsNavigationContainer>
+            <StatusBar 
+              backgroundColor="#2e7d32" 
+              barStyle="light-content" 
+            />
+            <Navigation />
+          </AnalyticsNavigationContainer>
+        </SwipeProvider>
+      </CartProvider>
     </AuthProvider>
   );
 };

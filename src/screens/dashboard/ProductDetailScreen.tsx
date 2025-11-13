@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -6,49 +6,93 @@ import {
   ScrollView, 
   TouchableOpacity,
   Image,
-  Alert 
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { HomeStackParamList } from '../../types';
-import { initialProducts } from '../../data/initialProducts';
+import { HomeStackParamList, Product } from '../../types';
+import { useCart } from '../../context/CartContext';
+import { productApi } from '../../services/api/productApi';
 import ResetStackButton from '../../components/ResetStackButton';
 
 type ProductDetailScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList, 'ProductDetail'>;
 
 const ProductDetailScreen = () => {
+  const { addToCart } = useCart();
   const navigation = useNavigation<ProductDetailScreenNavigationProp>();
   const route = useRoute();
-
   const { productId } = route.params as { productId: string };
 
-  const product = initialProducts.find(p => p.id === productId) || initialProducts[0];
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleBackToDrawerHome = () => {
-    // Navigasi eksplisit ke parent drawer
-    const parent = navigation.getParent();
-    if (parent) {
-      parent.goBack();
+  useEffect(() => {
+    fetchProductDetail();
+  }, [productId]);
+
+  const fetchProductDetail = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      console.log('🔄 Fetching product details for ID:', productId);
+      
+      const productData = await productApi.getProductById(productId);
+      setProduct(productData);
+      
+      console.log('✅ Product details loaded:', productData);
+    } catch (err: any) {
+      console.error('❌ Error fetching product:', err);
+      setError(err.message || 'Failed to load product details');
+      Alert.alert('Error', 'Failed to load product details');
+    } finally {
+      setLoading(false);
     }
   };
 
+  const handleBackToDrawerHome = () => {
+      navigation.navigate('Home');
+  };
+
   const handleAddToCart = () => {
-    Alert.alert(
-      'Success',
-      `${product.name} added to cart!`,
-      [{ text: 'OK', style: 'default' }]
-    );
+    if (!product) return; // Guard clause
+    addToCart(product);
+    // Menampilkan notifikasi sederhana bahwa produk telah ditambahkan
+    Alert.alert('Added to Cart', `${product.name} has been added to your cart.`);
   };
 
   const handleBuyNow = () => {
-    navigation.navigate('CheckoutModal', { product });
+    if (!product) return; // Guard clause
+    addToCart(product, 1); // Cukup tambahkan ke keranjang
+    // Tidak ada navigasi atau alert yang kompleks
   };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#2e7d32" />
+        <Text style={styles.loadingText}>Loading product details...</Text>
+      </View>
+    );
+  }
+
+  if (error || !product) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>Failed to load product</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={fetchProductDetail}>
+          <Text style={styles.retryButtonText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container}>
       <View style={styles.imageContainer}>
         <Image
-          source={{ uri: product.image }}
+          source={{ uri: product.image || product.thumbnail }}
           style={styles.productImage}
           resizeMode="cover"
         />
@@ -58,53 +102,134 @@ const ProductDetailScreen = () => {
               <Text style={styles.badgeText}>NEW</Text>
             </View>
           )}
-          {product.discount && (
+          {product.discount && product.discount > 0 && (
             <View style={[styles.badge, styles.discountBadge]}>
-              <Text style={styles.badgeText}>{product.discount}% OFF</Text>
+              <Text style={styles.badgeText}>{Math.round(product.discount)}% OFF</Text>
+            </View>
+          )}
+          {product.stock != null && product.stock < 10 && (
+            <View style={[styles.badge, styles.lowStockBadge]}>
+              <Text style={styles.badgeText}>LOW STOCK</Text>
             </View>
           )}
         </View>
       </View>
 
       <View style={styles.content}>
-        <Text style={styles.category}>{product.category.toUpperCase()}</Text>
+        <Text style={styles.category}>{product.category?.toUpperCase() || 'PRODUCT'}</Text>
         <Text style={styles.name}>{product.name}</Text>
-        <Text style={styles.price}>${product.price.toLocaleString()}</Text>
         
+        {/* Brand dan Rating */}
+        <View style={styles.metaInfo}>
+          {product.brand && (
+            <Text style={styles.brand}>Brand: {product.brand}</Text>
+          )}
+          {product.rating && (
+            <View style={styles.ratingContainer}>
+              <Text style={styles.rating}>⭐ {product.rating}/5</Text>
+            </View>
+          )}
+        </View>
+
+        <Text style={styles.price}>${product.price?.toLocaleString()}</Text>
+        
+        {/* Stock Information */}
+        <View style={styles.stockContainer}>
+          <Text style={[
+            styles.stockText, 
+            (product.stock ?? 0) > 10 ? styles.inStock : styles.lowStock
+          ]}>
+            {(product.stock ?? 0) > 10 ? 'In Stock' : `Only ${product.stock ?? 0} left`}
+          </Text>
+        </View>
+
         <Text style={styles.description}>{product.description}</Text>
 
+        {/* Product Features dari data API */}
         <View style={styles.features}>
-          <Text style={styles.featuresTitle}>Product Features:</Text>
+          <Text style={styles.featuresTitle}>Product Details:</Text>
+          
           <View style={styles.featureItem}>
             <Text style={styles.featureDot}>•</Text>
-            <Text style={styles.featureText}>Eco-friendly materials</Text>
+            <Text style={styles.featureText}>
+              <Text style={styles.featureLabel}>Category: </Text>
+              {product.category}
+            </Text>
           </View>
+          
+          {product.brand && (
+            <View style={styles.featureItem}>
+              <Text style={styles.featureDot}>•</Text>
+              <Text style={styles.featureText}>
+                <Text style={styles.featureLabel}>Brand: </Text>
+                {product.brand}
+              </Text>
+            </View>
+          )}
+          
           <View style={styles.featureItem}>
             <Text style={styles.featureDot}>•</Text>
-            <Text style={styles.featureText}>Sustainable production</Text>
+            <Text style={styles.featureText}>
+              <Text style={styles.featureLabel}>Rating: </Text>
+              {product.rating} / 5
+            </Text>
           </View>
+          
           <View style={styles.featureItem}>
             <Text style={styles.featureDot}>•</Text>
-            <Text style={styles.featureText}>Free shipping available</Text>
+            <Text style={styles.featureText}>
+              <Text style={styles.featureLabel}>Stock: </Text>
+              {product.stock} units available
+            </Text>
           </View>
+          
+          {product.discount && product.discount > 0 && (
+            <View style={styles.featureItem}>
+              <Text style={styles.featureDot}>•</Text>
+              <Text style={styles.featureText}>
+                <Text style={styles.featureLabel}>Discount: </Text>
+                {Math.round(product.discount)}% OFF
+              </Text>
+            </View>
+          )}
         </View>
 
+        {/* Action Buttons */}
         <View style={styles.buttonGroup}>
-          <TouchableOpacity style={styles.cartButton} onPress={handleAddToCart}>
-            <Text style={styles.cartButtonText}>Add to Cart</Text>
+          <TouchableOpacity 
+            style={[
+              styles.cartButton,
+              (product.stock ?? 0) === 0 && styles.disabledButton
+            ]} 
+            onPress={handleAddToCart}
+            disabled={(product.stock ?? 0) === 0}
+          >
+            <Text style={styles.cartButtonText}>
+              {(product.stock ?? 0) === 0 ? 'Out of Stock' : 'Add to Cart'}
+            </Text>
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.buyButton} onPress={handleBuyNow}>
-            <Text style={styles.buyButtonText}>Buy Now</Text>
+          <TouchableOpacity 
+            style={[
+              styles.buyButton,
+              (product.stock ?? 0) === 0 && styles.disabledButton
+            ]} 
+            onPress={handleBuyNow}
+            disabled={(product.stock ?? 0) === 0}
+          >
+            <Text style={styles.buyButtonText}>
+              {(product.stock ?? 0) === 0 ? 'Out of Stock' : 'Buy Now'}
+            </Text>
           </TouchableOpacity>
         </View>
 
+        {/* Navigation Buttons */}
         <View style={styles.navigationButtons}>
           <TouchableOpacity 
             style={styles.navButton} 
             onPress={handleBackToDrawerHome}
-          >
-            <Text style={styles.navButtonText}>Kembali ke Drawer Home</Text>
+                      >
+            <Text style={styles.navButtonText}>Back to Drawer Home</Text>
           </TouchableOpacity>
           
           <ResetStackButton />
@@ -113,7 +238,7 @@ const ProductDetailScreen = () => {
             style={styles.navButtonSecondary}
             onPress={() => navigation.goBack()}
           >
-            <Text style={styles.navButtonSecondaryText}>Kembali ke Tabs</Text>
+            <Text style={styles.navButtonSecondaryText}>Back to Products</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -126,9 +251,45 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#9bf89bff',
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#ff5722',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#2e7d32',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   imageContainer: {
     position: 'relative',
     height: 300,
+    backgroundColor: '#ffffff',
   },
   productImage: {
     width: '100%',
@@ -152,6 +313,9 @@ const styles = StyleSheet.create({
   discountBadge: {
     backgroundColor: '#ff5722',
   },
+  lowStockBadge: {
+    backgroundColor: '#ff9800',
+  },
   badgeText: {
     color: '#ffffff',
     fontSize: 12,
@@ -170,13 +334,46 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#2e7d32',
+    marginBottom: 8,
+  },
+  metaInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 12,
+  },
+  brand: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  ratingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  rating: {
+    fontSize: 14,
+    color: '#ff9800',
+    fontWeight: '500',
   },
   price: {
     fontSize: 28,
     fontWeight: 'bold',
     color: '#2e7d32',
-    marginBottom: 20,
+    marginBottom: 8,
+  },
+  stockContainer: {
+    marginBottom: 16,
+  },
+  stockText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  inStock: {
+    color: '#4caf50',
+  },
+  lowStock: {
+    color: '#ff5722',
   },
   description: {
     fontSize: 16,
@@ -221,6 +418,10 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 20,
   },
+  featureLabel: {
+    fontWeight: '600',
+    color: '#333',
+  },
   buttonGroup: {
     flexDirection: 'row',
     gap: 12,
@@ -259,6 +460,9 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   navigationButtons: {
     gap: 12,

@@ -1,28 +1,61 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, Image, RefreshControl, Alert } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { 
+  View, 
+  Text, 
+  FlatList, 
+  StyleSheet, 
+  TouchableOpacity, 
+  Image, 
+  RefreshControl, 
+  Alert,
+  ActivityIndicator 
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { HomeStackParamList } from '../../types';
-import { initialProducts } from '../../data/initialProducts';
+import { productApi } from '../../services/api/productApi';
+import { Product } from '../../types';
 
 type DiscountScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList>;
 
 const DiscountScreen = () => {
   const navigation = useNavigation<DiscountScreenNavigationProp>();
 
-  const [discountProducts, setDiscountProducts] = useState(() => initialProducts.filter(p => p.discount));
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [discountProducts, setDiscountProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch discount products dari API
+  const fetchDiscountProducts = async () => {
+    try {
+      setError(null);
+      const allProducts = await productApi.getAllProducts();
+      
+      // Filter produk yang memiliki diskon
+      // Asumsi: produk diskon memiliki property discount > 0
+      const discountedProducts = allProducts.filter(product => 
+        product.discount && product.discount > 0
+      );
+      
+      setDiscountProducts(discountedProducts);
+    } catch (err) {
+      setError('Failed to load discount products');
+      console.error('Error fetching discount products:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // Load data pertama kali
+  useEffect(() => {
+    fetchDiscountProducts();
+  }, []);
 
   const onRefresh = useCallback(() => {
-    setIsRefreshing(true);
-    // Simulasi fetch data
-    setTimeout(() => {
-      // Acak urutan produk diskon untuk menunjukkan perubahan
-      const refreshedProducts = [...initialProducts.filter(p => p.discount)].sort(() => Math.random() - 0.5);
-      setDiscountProducts(refreshedProducts);
-      setIsRefreshing(false);
-      Alert.alert('Refreshed!', 'Daftar diskon telah diperbarui.');
-    }, 1500);
+    setRefreshing(true);
+    fetchDiscountProducts();
   }, []);
 
   const handleProductPress = (productId: string) => {
@@ -33,56 +66,111 @@ const DiscountScreen = () => {
     return price * (1 - discount / 100);
   };
 
-  const renderProductItem = ({ item }: { item: any }) => (
-    <TouchableOpacity 
-      style={styles.productCard}
-      onPress={() => handleProductPress(item.id)}
-    >
-      <Image source={{ uri: item.image }} style={styles.productImage} />
-      <View style={styles.productInfo}>
-        <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
+  // Komponen untuk product item dengan image error handling
+  const ProductItem = ({ item }: { item: Product }) => {
+    const [imageError, setImageError] = useState(false);
+
+    return (
+      <TouchableOpacity 
+        style={styles.productCard}
+        onPress={() => handleProductPress(item.id)}
+      >
+        {imageError ? (
+          <View style={[styles.productImage, styles.placeholderContainer]}>
+            <Text style={styles.placeholderText}>🏷️</Text>
+            <Text style={styles.placeholderSubtext}>Sale</Text>
+          </View>
+        ) : (
+          <Image 
+            source={{ uri: item.image }} 
+            style={styles.productImage} 
+            resizeMode="cover"
+            onError={() => setImageError(true)}
+          />
+        )}
         
-        <View style={styles.priceContainer}>
-          <Text style={styles.originalPrice}>
-            ${item.price.toLocaleString()}
-          </Text>
-          <Text style={styles.discountedPrice}>
-            ${calculateDiscountedPrice(item.price, item.discount || 0).toLocaleString()}
-          </Text>
+        <View style={styles.productInfo}>
+          <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
+          
+          <View style={styles.priceContainer}>
+            <Text style={styles.originalPrice}>
+              ${item.price.toLocaleString()}
+            </Text>
+            <Text style={styles.discountedPrice}>
+              ${calculateDiscountedPrice(item.price, item.discount || 0).toLocaleString()}
+            </Text>
+          </View>
+          
+          <View style={styles.discountBadge}>
+            <Text style={styles.discountBadgeText}>{item.discount}% OFF</Text>
+          </View>
+          
+          <Text style={styles.productCategory}>{item.category}</Text>
+          
+          {item.isNew && (
+            <View style={styles.newBadge}>
+              <Text style={styles.newBadgeText}>NEW</Text>
+            </View>
+          )}
         </View>
-        
-        <View style={styles.discountBadge}>
-          <Text style={styles.discountBadgeText}>{item.discount}% OFF</Text>
-        </View>
-        
-        <Text style={styles.productCategory}>{item.category}</Text>
+      </TouchableOpacity>
+    );
+  };
+
+  // Loading state
+  if (loading && !refreshing) {
+    return (
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color="#2e7d32" />
+        <Text style={styles.loadingText}>Loading hot deals...</Text>
       </View>
-    </TouchableOpacity>
-  );
+    );
+  }
+
+  // Error state
+  if (error && !loading) {
+    return (
+      <View style={styles.centerContainer}>
+        <Text style={styles.errorIcon}>❌</Text>
+        <Text style={styles.errorTitle}>Oops!</Text>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={fetchDiscountProducts}>
+          <Text style={styles.retryButtonText}>Try Again</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>💰 Hot Deals</Text>
-      <Text style={styles.subtitle}>Limited time discounts</Text>
+      <Text style={styles.subtitle}>
+        {discountProducts.length} limited time discounts available
+      </Text>
       
-      {discountProducts.length === 0 ? (
+      {discountProducts.length === 0 && !loading ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyIcon}>🎯</Text>
           <Text style={styles.emptyTitle}>No Discounts Available</Text>
           <Text style={styles.emptyText}>
             Check back later for special offers!
           </Text>
+          <TouchableOpacity style={styles.retryButton} onPress={fetchDiscountProducts}>
+            <Text style={styles.retryButtonText}>Refresh</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
           data={discountProducts}
-          renderItem={renderProductItem}
+          renderItem={({ item }) => <ProductItem item={item} />}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
-              refreshing={isRefreshing}
+              refreshing={refreshing}
               onRefresh={onRefresh}
+              colors={['#2e7d32']}
+              tintColor={'#2e7d32'}
             />
           }
           contentContainerStyle={styles.listContent}
@@ -97,6 +185,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#9bf89bff',
     padding: 16,
+  },
+  centerContainer: {
+    flex: 1,
+    backgroundColor: '#9bf89bff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
   title: {
     fontSize: 24,
@@ -131,6 +226,22 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 8,
+  },
+  placeholderContainer: {
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderStyle: 'dashed',
+  },
+  placeholderText: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  placeholderSubtext: {
+    fontSize: 12,
+    color: '#666',
   },
   productInfo: {
     flex: 1,
@@ -177,6 +288,19 @@ const styles = StyleSheet.create({
     color: '#666',
     textTransform: 'capitalize',
   },
+  newBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#4caf50',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginTop: 4,
+  },
+  newBadgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -198,6 +322,40 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     lineHeight: 22,
+    marginBottom: 20,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#2e7d32',
+  },
+  errorIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#d32f2f',
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 22,
+  },
+  retryButton: {
+    backgroundColor: '#2e7d32',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 
