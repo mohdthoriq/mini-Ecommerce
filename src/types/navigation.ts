@@ -21,7 +21,8 @@ export type RootDrawerParamList = {
   Login: undefined;
   ProductList: undefined;
   ProductDetail: { productId: string }; 
-  CheckoutModal: undefined; 
+  CheckoutModal: undefined;
+  TestError: undefined;
 };
 
 export type HomeStackParamList = {
@@ -32,6 +33,7 @@ export type HomeStackParamList = {
   ProductList: undefined;
   Profile: undefined;
   Login: undefined;
+  TestError: undefined;
   CheckoutModal: { 
         product?: Product; // Untuk checkout single product
         cartItems?: CartItem[]; // Untuk checkout dari cart

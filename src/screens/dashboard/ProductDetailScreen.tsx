@@ -18,6 +18,18 @@ import ResetStackButton from '../../components/ResetStackButton';
 
 type ProductDetailScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList, 'ProductDetail'>;
 
+// Fallback product data untuk error 404/500
+const FALLBACK_PRODUCT: Product = {
+  id: "fallback",
+  name: "Produk Arsip",
+  image: "https://dummyimage.com/300x300/cccccc/000000",
+  price: 0,
+  description: "Ini adalah versi arsip produk. Data terbaru tidak dapat dimuat.",
+  category: "Archive",
+  stock: 0,
+  rating: 0
+};
+
 const ProductDetailScreen = () => {
   const { addToCart } = useCart();
   const navigation = useNavigation<ProductDetailScreenNavigationProp>();
@@ -27,6 +39,8 @@ const ProductDetailScreen = () => {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showFallback, setShowFallback] = useState(false);
+  const [httpStatus, setHttpStatus] = useState<number | null>(null);
 
   useEffect(() => {
     fetchProductDetail();
@@ -36,6 +50,9 @@ const ProductDetailScreen = () => {
     try {
       setLoading(true);
       setError(null);
+      setShowFallback(false);
+      setHttpStatus(null);
+      
       console.log('🔄 Fetching product details for ID:', productId);
       
       const productData = await productApi.getProductById(productId);
@@ -44,28 +61,68 @@ const ProductDetailScreen = () => {
       console.log('✅ Product details loaded:', productData);
     } catch (err: any) {
       console.error('❌ Error fetching product:', err);
+      
+      // Deteksi status code error
+      const status = err.response?.status;
+      setHttpStatus(status);
+      
+      if (status === 404) {
+        console.warn('⚠️ Product not found (404) - Showing fallback data');
+      } else if (status === 500) {
+        console.error('💥 Server error (500) - Showing fallback data');
+      } else {
+        console.error('🚨 Other error:', err.message);
+      }
+      
       setError(err.message || 'Failed to load product details');
-      Alert.alert('Error', 'Failed to load product details');
+      
+      // Show fallback product untuk 404 atau 500 errors
+      if (status === 404 || status === 500) {
+        setShowFallback(true);
+        setProduct(FALLBACK_PRODUCT);
+        
+        // Show toast message
+        Alert.alert(
+          'Info', 
+          'Gagal memuat data terbaru. Menampilkan versi arsip.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        // Untuk error lain, show alert biasa
+        Alert.alert('Error', 'Failed to load product details');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const handleBackToDrawerHome = () => {
-      navigation.navigate('Home');
+    navigation.navigate('Home');
   };
 
   const handleAddToCart = () => {
-    if (!product) return; // Guard clause
+    if (!product) return;
+    
+    // Prevent adding fallback product to cart
+    if (product.id === "fallback") {
+      Alert.alert('Info', 'Produk arsip tidak dapat ditambahkan ke keranjang.');
+      return;
+    }
+    
     addToCart(product);
-    // Menampilkan notifikasi sederhana bahwa produk telah ditambahkan
     Alert.alert('Added to Cart', `${product.name} has been added to your cart.`);
   };
 
   const handleBuyNow = () => {
-    if (!product) return; // Guard clause
-    addToCart(product, 1); // Cukup tambahkan ke keranjang
-    // Tidak ada navigasi atau alert yang kompleks
+    if (!product) return;
+    
+    // Prevent buying fallback product
+    if (product.id === "fallback") {
+      Alert.alert('Info', 'Produk arsip tidak dapat dibeli.');
+      return;
+    }
+    
+    addToCart(product, 1);
   };
 
   if (loading) {
@@ -77,10 +134,16 @@ const ProductDetailScreen = () => {
     );
   }
 
-  if (error || !product) {
+  // Use fallback product if available, otherwise show error
+  const displayProduct = showFallback ? product : product;
+  
+  if ((error && !showFallback) || !displayProduct) {
     return (
       <View style={styles.errorContainer}>
         <Text style={styles.errorText}>Failed to load product</Text>
+        <Text style={styles.errorSubText}>
+          {httpStatus ? `HTTP ${httpStatus}` : error}
+        </Text>
         <TouchableOpacity style={styles.retryButton} onPress={fetchProductDetail}>
           <Text style={styles.retryButtonText}>Retry</Text>
         </TouchableOpacity>
@@ -90,135 +153,95 @@ const ProductDetailScreen = () => {
 
   return (
     <ScrollView style={styles.container}>
+      {/* Fallback Product Banner */}
+      {showFallback && (
+        <View style={styles.fallbackBanner}>
+          <Text style={styles.fallbackBannerText}>
+            ⚠️ Menampilkan Versi Arsip
+          </Text>
+        </View>
+      )}
+
+      {/* HTTP Status Debug Info */}
+      {__DEV__ && httpStatus && (
+        <View style={styles.debugContainer}>
+          <Text style={styles.debugText}>
+            HTTP Status: {httpStatus} | {httpStatus === 404 ? 'Not Found' : httpStatus === 500 ? 'Server Error' : 'Other Error'}
+          </Text>
+        </View>
+      )}
+
       <View style={styles.imageContainer}>
         <Image
-          source={{ uri: product.image || product.thumbnail }}
+          source={{ uri: displayProduct.image || displayProduct.thumbnail }}
           style={styles.productImage}
           resizeMode="cover"
         />
         <View style={styles.badgeContainer}>
-          {product.isNew && (
+          {displayProduct.isNew && (
             <View style={[styles.badge, styles.newBadge]}>
               <Text style={styles.badgeText}>NEW</Text>
             </View>
           )}
-          {product.discount && product.discount > 0 && (
+          {displayProduct.discount && displayProduct.discount > 0 && (
             <View style={[styles.badge, styles.discountBadge]}>
-              <Text style={styles.badgeText}>{Math.round(product.discount)}% OFF</Text>
+              <Text style={styles.badgeText}>{Math.round(displayProduct.discount)}% OFF</Text>
             </View>
           )}
-          {product.stock != null && product.stock < 10 && (
-            <View style={[styles.badge, styles.lowStockBadge]}>
-              <Text style={styles.badgeText}>LOW STOCK</Text>
+          {showFallback && (
+            <View style={[styles.badge, styles.fallbackBadge]}>
+              <Text style={styles.badgeText}>ARSIP</Text>
             </View>
           )}
         </View>
       </View>
 
       <View style={styles.content}>
-        <Text style={styles.category}>{product.category?.toUpperCase() || 'PRODUCT'}</Text>
-        <Text style={styles.name}>{product.name}</Text>
+        <Text style={styles.category}>{displayProduct.category?.toUpperCase() || 'PRODUCT'}</Text>
+        <Text style={styles.name}>{displayProduct.name}</Text>
         
-        {/* Brand dan Rating */}
-        <View style={styles.metaInfo}>
-          {product.brand && (
-            <Text style={styles.brand}>Brand: {product.brand}</Text>
-          )}
-          {product.rating && (
-            <View style={styles.ratingContainer}>
-              <Text style={styles.rating}>⭐ {product.rating}/5</Text>
-            </View>
-          )}
-        </View>
-
-        <Text style={styles.price}>${product.price?.toLocaleString()}</Text>
+        <Text style={styles.price}>
+          {displayProduct.price > 0 ? `$${displayProduct.price.toLocaleString()}` : 'Harga tidak tersedia'}
+        </Text>
         
-        {/* Stock Information */}
         <View style={styles.stockContainer}>
           <Text style={[
             styles.stockText, 
-            (product.stock ?? 0) > 10 ? styles.inStock : styles.lowStock
+            (displayProduct.stock ?? 0) > 0 ? styles.inStock : styles.outOfStock
           ]}>
-            {(product.stock ?? 0) > 10 ? 'In Stock' : `Only ${product.stock ?? 0} left`}
+            {(displayProduct.stock ?? 0) > 0 ? 'In Stock' : 'Out of Stock'}
           </Text>
         </View>
 
-        <Text style={styles.description}>{product.description}</Text>
-
-        {/* Product Features dari data API */}
-        <View style={styles.features}>
-          <Text style={styles.featuresTitle}>Product Details:</Text>
-          
-          <View style={styles.featureItem}>
-            <Text style={styles.featureDot}>•</Text>
-            <Text style={styles.featureText}>
-              <Text style={styles.featureLabel}>Category: </Text>
-              {product.category}
-            </Text>
-          </View>
-          
-          {product.brand && (
-            <View style={styles.featureItem}>
-              <Text style={styles.featureDot}>•</Text>
-              <Text style={styles.featureText}>
-                <Text style={styles.featureLabel}>Brand: </Text>
-                {product.brand}
-              </Text>
-            </View>
-          )}
-          
-          <View style={styles.featureItem}>
-            <Text style={styles.featureDot}>•</Text>
-            <Text style={styles.featureText}>
-              <Text style={styles.featureLabel}>Rating: </Text>
-              {product.rating} / 5
-            </Text>
-          </View>
-          
-          <View style={styles.featureItem}>
-            <Text style={styles.featureDot}>•</Text>
-            <Text style={styles.featureText}>
-              <Text style={styles.featureLabel}>Stock: </Text>
-              {product.stock} units available
-            </Text>
-          </View>
-          
-          {product.discount && product.discount > 0 && (
-            <View style={styles.featureItem}>
-              <Text style={styles.featureDot}>•</Text>
-              <Text style={styles.featureText}>
-                <Text style={styles.featureLabel}>Discount: </Text>
-                {Math.round(product.discount)}% OFF
-              </Text>
-            </View>
-          )}
-        </View>
+        <Text style={styles.description}>{displayProduct.description}</Text>
 
         {/* Action Buttons */}
         <View style={styles.buttonGroup}>
           <TouchableOpacity 
             style={[
               styles.cartButton,
-              (product.stock ?? 0) === 0 && styles.disabledButton
+              ((displayProduct.stock ?? 0) === 0 || showFallback) && styles.disabledButton
             ]} 
             onPress={handleAddToCart}
-            disabled={(product.stock ?? 0) === 0}
+            disabled={(displayProduct.stock ?? 0) === 0 || showFallback}
           >
             <Text style={styles.cartButtonText}>
-              {(product.stock ?? 0) === 0 ? 'Out of Stock' : 'Add to Cart'}
+              {showFallback ? 'Produk Arsip' : 
+               (displayProduct.stock ?? 0) === 0 ? 'Out of Stock' : 'Add to Cart'}
             </Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
             style={[
               styles.buyButton,
-              (product.stock ?? 0) === 0 && styles.disabledButton
+              ((displayProduct.stock ?? 0) === 0 || showFallback) && styles.disabledButton
             ]} 
             onPress={handleBuyNow}
-            disabled={(product.stock ?? 0) === 0}
+            disabled={(displayProduct.stock ?? 0) === 0 || showFallback}
           >
             <Text style={styles.buyButtonText}>
-              {(product.stock ?? 0) === 0 ? 'Out of Stock' : 'Buy Now'}
+              {showFallback ? 'Tidak Tersedia' : 
+               (displayProduct.stock ?? 0) === 0 ? 'Out of Stock' : 'Buy Now'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -228,18 +251,11 @@ const ProductDetailScreen = () => {
           <TouchableOpacity 
             style={styles.navButton} 
             onPress={handleBackToDrawerHome}
-                      >
-            <Text style={styles.navButtonText}>Back to Drawer Home</Text>
+          >
+            <Text style={styles.navButtonText}>Back to Home</Text>
           </TouchableOpacity>
           
           <ResetStackButton />
-          
-          <TouchableOpacity 
-            style={styles.navButtonSecondary}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={styles.navButtonSecondaryText}>Back to Products</Text>
-          </TouchableOpacity>
         </View>
       </View>
     </ScrollView>
@@ -272,6 +288,12 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 16,
     color: '#ff5722',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  errorSubText: {
+    fontSize: 14,
+    color: '#666',
     marginBottom: 16,
     textAlign: 'center',
   },
@@ -285,6 +307,26 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  fallbackBanner: {
+    backgroundColor: '#ff9800',
+    padding: 12,
+    alignItems: 'center',
+  },
+  fallbackBannerText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  debugContainer: {
+    backgroundColor: '#e3f2fd',
+    padding: 8,
+    alignItems: 'center',
+  },
+  debugText: {
+    fontSize: 12,
+    color: '#1976d2',
+    fontFamily: 'monospace',
   },
   imageContainer: {
     position: 'relative',
@@ -313,8 +355,8 @@ const styles = StyleSheet.create({
   discountBadge: {
     backgroundColor: '#ff5722',
   },
-  lowStockBadge: {
-    backgroundColor: '#ff9800',
+  fallbackBadge: {
+    backgroundColor: '#9e9e9e',
   },
   badgeText: {
     color: '#ffffff',
@@ -336,26 +378,6 @@ const styles = StyleSheet.create({
     color: '#2e7d32',
     marginBottom: 8,
   },
-  metaInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  brand: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  rating: {
-    fontSize: 14,
-    color: '#ff9800',
-    fontWeight: '500',
-  },
   price: {
     fontSize: 28,
     fontWeight: 'bold',
@@ -372,7 +394,7 @@ const styles = StyleSheet.create({
   inStock: {
     color: '#4caf50',
   },
-  lowStock: {
+  outOfStock: {
     color: '#ff5722',
   },
   description: {
@@ -380,47 +402,6 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     color: '#666',
     marginBottom: 24,
-  },
-  features: {
-    backgroundColor: '#ffffff',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 24,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-  },
-  featuresTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2e7d32',
-    marginBottom: 12,
-  },
-  featureItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  featureDot: {
-    color: '#4caf50',
-    fontSize: 16,
-    marginRight: 8,
-    marginTop: 2,
-  },
-  featureText: {
-    fontSize: 14,
-    color: '#666',
-    flex: 1,
-    lineHeight: 20,
-  },
-  featureLabel: {
-    fontWeight: '600',
-    color: '#333',
   },
   buttonGroup: {
     flexDirection: 'row',
@@ -447,14 +428,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 8,
     alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
   },
   buyButtonText: {
     color: '#ffffff',
@@ -475,19 +448,6 @@ const styles = StyleSheet.create({
   },
   navButtonText: {
     color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  navButtonSecondary: {
-    backgroundColor: '#d8f7dbff',
-    borderWidth: 1,
-    borderColor: '#666',
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  navButtonSecondaryText: {
-    color: '#666',
     fontSize: 16,
     fontWeight: '600',
   },

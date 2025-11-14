@@ -17,6 +17,7 @@ import CartScreen from '../screens/dashboard/Cart';
 import ProductListScreen from '../screens/dashboard/ProductListScreen';
 import AnalyticsHistoryScreen from '../screens/dashboard/AnalyticsHistory';
 import ProfileScreen from '../screens/dashboard/Profile';
+import TestErrorScreen from '../screens/auth/TestErrorScreen';
 
 
 const Drawer = createDrawerNavigator<RootDrawerParamList>();
@@ -213,6 +214,15 @@ const DrawerNavigator = () => {
         options={{
           title: 'All Products',
           drawerItemStyle: { display: 'none' }, // Sembunyikan dari drawer menu jika tidak ingin ditampilkan
+        }}
+      />
+
+      <Drawer.Screen
+        name="TestError"
+        component={TestErrorScreen}
+        options={{
+          title: 'Test Error',
+          drawerItemStyle: { display: 'none' }, // Sembunyikan dari drawer
         }}
       />
 

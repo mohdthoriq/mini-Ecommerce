@@ -19,6 +19,36 @@ import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 
 type ModalCheckoutNavigationProp = NativeStackNavigationProp<HomeStackParamList, 'CheckoutModal'>;
 
+// Mock Axios Interceptor (dalam aplikasi nyata, ini akan di setup di file terpisah)
+const setupAxiosInterceptor = () => {
+  // Simulasi interceptor yang akan menangkap error 400
+  return {
+    intercept: (callback: (errors: FormErrors) => void) => {
+      // Dalam implementasi nyata, ini akan menjadi axios.interceptors.response.use()
+      console.log('🛡️ Axios Response Interceptor configured');
+    }
+  };
+};
+
+// Type untuk form errors
+interface FormErrors {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  cardNumber?: string;
+  expiryDate?: string;
+  cvv?: string;
+  cardholderName?: string;
+  general?: string;
+}
+
 const CheckoutModalScreen = () => {
     const navigation = useNavigation<ModalCheckoutNavigationProp>();
     const route = useRoute();
@@ -53,10 +83,23 @@ const CheckoutModalScreen = () => {
         cardholderName: '',
     });
 
+    // State untuk form errors dari server
+    const [formErrors, setFormErrors] = useState<FormErrors>({});
+
     // Terima data dari route. Tipe sudah dijamin oleh HomeStackParamList.
     const { cartItems, subtotal = 0, discount = 0, shippingFee = 0, tax = 0, total = 0 } = (route.params as HomeStackParamList['CheckoutModal']) || {};
 
     const [checkoutItems, setCheckoutItems] = useState<CartItem[]>(cartItems || []);
+
+    // Setup Axios Interceptor ketika komponen mount
+    React.useEffect(() => {
+        const interceptor = setupAxiosInterceptor();
+        interceptor.intercept((errors: FormErrors) => {
+            console.log('🔴 Server validation errors:', errors);
+            setFormErrors(errors);
+            setIsProcessing(false);
+        });
+    }, []);
 
     const getShippingFee = (): number => {
         const fees: Record<ShippingMethod, number> = {
@@ -75,7 +118,6 @@ const CheckoutModalScreen = () => {
         };
         return times[shippingMethod];
     };
-
 
     // Validasi form yang lebih komprehensif
     const isFormValid =
@@ -121,6 +163,34 @@ const CheckoutModalScreen = () => {
         return cleaned;
     };
 
+    // Simulasi API call yang mungkin return error 400
+    const mockApiCall = async (): Promise<{ success: boolean; errors?: any }> => {
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                // Simulasi server validation error
+                const hasError = Math.random() > 0.7; // 30% chance of error untuk testing
+                
+                if (hasError) {
+                    resolve({
+                        success: false,
+                        errors: {
+                            firstName: !formData.firstName ? 'First name is required' : undefined,
+                            email: !formData.email ? 'Email is required' : 
+                                  !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) ? 'Invalid email format' : undefined,
+                            addressLine1: !formData.addressLine1 ? 'Address is required' : undefined,
+                            city: !formData.city ? 'City is required' : undefined,
+                            postalCode: !formData.postalCode ? 'Postal code is required' : 
+                                       formData.postalCode.length < 5 ? 'Postal code must be at least 5 characters' : undefined,
+                            cardNumber: paymentMethod === 'credit_card' && !formData.cardNumber ? 'Card number is required' : undefined,
+                        }
+                    });
+                } else {
+                    resolve({ success: true });
+                }
+            }, 2000);
+        });
+    };
+
     const handleCheckout = async () => {
         if (!isFormValid) {
             Alert.alert('Incomplete Information', 'Please fill in all required fields correctly.');
@@ -128,10 +198,22 @@ const CheckoutModalScreen = () => {
         }
 
         setIsProcessing(true);
+        setFormErrors({}); // Clear previous errors
 
-        // Simulate payment processing
         try {
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            // Simulasi API call yang mungkin return validation errors
+            const result = await mockApiCall();
+
+            if (!result.success && result.errors) {
+                // Simulasi Axios Interceptor menangkap error 400
+                console.log('🔄 Interceptor capturing 400 error:', result.errors);
+                setFormErrors(result.errors);
+                setIsProcessing(false);
+                return;
+            }
+
+            // Jika sukses, lanjutkan dengan order confirmation
+            await new Promise(resolve => setTimeout(resolve, 1000));
 
             setIsProcessing(false);
             Alert.alert(
@@ -158,7 +240,7 @@ const CheckoutModalScreen = () => {
             [
                 { text: 'Stay', style: 'cancel' },
                 { text: 'Leave', onPress: () => navigation.goBack() }
-                        ]
+            ]
         );
     };
 
@@ -177,6 +259,14 @@ const CheckoutModalScreen = () => {
             ...prev,
             [field]: formattedValue
         }));
+
+        // Clear error when user starts typing
+        if (formErrors[field as keyof FormErrors]) {
+            setFormErrors(prev => ({
+                ...prev,
+                [field]: undefined
+            }));
+        }
     };
 
     const InputField = ({
@@ -193,26 +283,34 @@ const CheckoutModalScreen = () => {
         keyboardType?: any;
         required?: boolean;
         secureTextEntry?: boolean;
-    }) => (
-        <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>
-                {label} {required && <Text style={styles.required}>*</Text>}
-            </Text>
-            <TextInput
-                style={[
-                    styles.textInput,
-                    !formData[field] && required && styles.inputError
-                ]}
-                placeholder={placeholder}
-                placeholderTextColor="#8a8a8a"
-                value={formData[field]}
-                onChangeText={(value) => updateFormData(field, value)}
-                keyboardType={keyboardType}
-                secureTextEntry={secureTextEntry}
-                autoCapitalize={field === 'email' ? 'none' : 'words'}
-            />
-        </View>
-    );
+    }) => {
+        const error = formErrors[field as keyof FormErrors];
+        
+        return (
+            <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>
+                    {label} {required && <Text style={styles.required}>*</Text>}
+                </Text>
+                <TextInput
+                    style={[
+                        styles.textInput,
+                        (!formData[field] && required) && styles.inputError,
+                        error && styles.inputError
+                    ]}
+                    placeholder={placeholder}
+                    placeholderTextColor="#8a8a8a"
+                    value={formData[field]}
+                    onChangeText={(value) => updateFormData(field, value)}
+                    keyboardType={keyboardType}
+                    secureTextEntry={secureTextEntry}
+                    autoCapitalize={field === 'email' ? 'none' : 'words'}
+                />
+                {error && (
+                    <Text style={styles.errorText}>{error}</Text>
+                )}
+            </View>
+        );
+    };
 
     return (
         <Modal
@@ -268,6 +366,16 @@ const CheckoutModalScreen = () => {
                             <Text style={styles.stepText}>Review</Text>
                         </View>
                     </View>
+
+                    {/* Server Validation Error Banner */}
+                    {formErrors.general && (
+                        <View style={styles.serverErrorBanner}>
+                            <FontAwesome6 name="triangle-exclamation" size={16} color="#ffffff" iconStyle='solid' />
+                            <Text style={styles.serverErrorText}>
+                                Please check the form for errors
+                            </Text>
+                        </View>
+                    )}
 
                     {/* Product Summary Card */}
                     <View style={styles.section}>
@@ -758,6 +866,27 @@ const styles = StyleSheet.create({
         marginHorizontal: 8,
         marginBottom: 20,
     },
+    // Server Error Styles
+    serverErrorBanner: {
+        backgroundColor: '#dc2626',
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 16,
+        gap: 8,
+    },
+    serverErrorText: {
+        color: '#ffffff',
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    errorText: {
+        color: '#dc2626',
+        fontSize: 12,
+        marginTop: 4,
+        fontWeight: '500',
+    },
     section: {
         backgroundColor: '#ffffff',
         padding: 20,
@@ -878,7 +1007,7 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     inputError: {
-        borderColor: '#ef4444',
+        borderColor: '#dc2626',
     },
     rowInput: {
         flexDirection: 'row',

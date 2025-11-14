@@ -16,6 +16,7 @@ import { HomeStackParamList } from '../../types';
 import { AuthContext } from '../../context/AuthContext';
 import { productApi } from '../../services/api/productApi';
 import { Product } from '../../types';
+import NetInfo from '@react-native-community/netinfo';
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList>;
 
@@ -27,21 +28,71 @@ const HomeScreen = () => {
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState<boolean | null>(true);
+  const [isNetworkLoading, setNetworkLoading] = useState(false);
 
   // Fetch featured products dari API
   const fetchFeaturedProducts = useCallback(async () => {
     try {
       setError(null);
+      // Cek network sebelum fetch
+      const netState = await NetInfo.fetch();
+      if (!netState.isConnected) {
+        setError('No internet connection');
+        setIsOnline(false);
+        return;
+      }
+
+      setIsOnline(true);
       // Ambil produk populer dari API
       const popularProducts = await productApi.getPopularProducts(4);
       setFeaturedProducts(popularProducts);
     } catch (err) {
-      setError('Failed to load featured products');
-      console.error('Error fetching featured products:', err);
+      // Cek jika error karena network
+      const netState = await NetInfo.fetch();
+      if (!netState.isConnected) {
+        setError('No internet connection');
+        setIsOnline(false);
+      } else {
+        setError('Failed to load featured products');
+        console.error('Error fetching featured products:', err);
+      }
     } finally {
       setLoading(false);
     }
   }, []);
+
+  // Handle ketika network kembali online
+  const handleNetworkOnline = useCallback(() => {
+    setNetworkLoading(true);
+    setError(null);
+    
+    // Simulate network delay 2-3 detik
+    const delay = Math.random() * 1000 + 2000; // Random antara 2000-3000ms
+    
+    setTimeout(() => {
+      fetchFeaturedProducts().finally(() => {
+        setNetworkLoading(false);
+      });
+    }, delay);
+  }, [fetchFeaturedProducts]);
+
+  // Check network connection
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      const wasOffline = !isOnline;
+      const nowOnline = state.isConnected && state.isInternetReachable;
+      
+      setIsOnline(nowOnline);
+      
+      // Jika network berubah dari offline ke online, trigger loading dengan delay
+      if (wasOffline && nowOnline) {
+        handleNetworkOnline();
+      }
+    });
+
+    return () => unsubscribe();
+  }, [isOnline, handleNetworkOnline]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -113,23 +164,82 @@ const HomeScreen = () => {
     }
   }, [isAuthenticated, navigation]);
 
-  // Component untuk loading state
-  const renderLoading = () => (
-    <View style={styles.loadingContainer}>
-      <ActivityIndicator size="large" color="#2e7d32" />
-      <Text style={styles.loadingText}>Loading featured products...</Text>
+  // Network status indicator component
+  const NetworkStatus = () => (
+    <View style={[
+      styles.networkStatus, 
+      isOnline ? styles.networkOnline : styles.networkOffline
+    ]}>
+      <Text style={styles.networkStatusText}>
+        {isOnline ? '🟢 Online' : '🔴 Offline'}
+      </Text>
+      {isNetworkLoading && (
+        <View style={styles.networkLoading}>
+          <ActivityIndicator size="small" color="#ffffff" />
+          <Text style={styles.networkLoadingText}>Reconnecting...</Text>
+        </View>
+      )}
     </View>
   );
 
-  // Component untuk error state
+  // Component untuk loading state dengan animasi network
+  const renderLoading = () => (
+    <View style={styles.loadingContainer}>
+      <ActivityIndicator size="large" color="#2e7d32" />
+      <Text style={styles.loadingText}>
+        {isNetworkLoading ? 'Reconnecting to network...' : 'Loading featured products...'}
+      </Text>
+      {isNetworkLoading && (
+        <Text style={styles.loadingSubtext}>
+          Please wait while we sync the latest products
+        </Text>
+      )}
+    </View>
+  );
+
+  // Component untuk error state dengan network info
   const renderError = () => (
     <View style={styles.errorContainer}>
-      <Text style={styles.errorIcon}>❌</Text>
-      <Text style={styles.errorTitle}>Failed to Load</Text>
-      <Text style={styles.errorText}>{error}</Text>
-      <TouchableOpacity style={styles.retryButton} onPress={fetchFeaturedProducts}>
-        <Text style={styles.retryButtonText}>Try Again</Text>
-      </TouchableOpacity>
+      <Text style={styles.errorIcon}>
+        {!isOnline ? '📶' : '❌'}
+      </Text>
+      <Text style={styles.errorTitle}>
+        {!isOnline ? 'No Internet Connection' : 'Failed to Load'}
+      </Text>
+      <Text style={styles.errorText}>
+        {!isOnline 
+          ? 'Please check your internet connection and try again'
+          : error
+        }
+      </Text>
+      
+      {!isOnline ? (
+        <View style={styles.offlineActions}>
+          <Text style={styles.offlineText}>
+            We'll automatically retry when you're back online
+          </Text>
+          <TouchableOpacity 
+            style={[styles.retryButton, styles.offlineButton]} 
+            onPress={() => {
+              setNetworkLoading(true);
+              setTimeout(() => {
+                fetchFeaturedProducts().finally(() => setNetworkLoading(false));
+              }, 2500);
+            }}
+            disabled={isNetworkLoading}
+          >
+            {isNetworkLoading ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <Text style={styles.retryButtonText}>Try Now</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity style={styles.retryButton} onPress={fetchFeaturedProducts}>
+          <Text style={styles.retryButtonText}>Try Again</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -146,6 +256,9 @@ const HomeScreen = () => {
         />
       }
     >
+      {/* Network Status Banner */}
+      <NetworkStatus />
+
       {/* Hero Section */}
       <View style={styles.heroSection}>
         <Text style={styles.heroTitle}>
@@ -183,7 +296,9 @@ const HomeScreen = () => {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Featured Eco Products</Text>
-          <Text style={styles.refreshHint}>↓ Pull down to refresh</Text>
+          <View style={styles.headerRight}>
+            <Text style={styles.refreshHint}>↓ Pull down to refresh</Text>
+          </View>
         </View>
         <Text style={styles.sectionSubtitle}>
           Handpicked sustainable products just for you
@@ -198,14 +313,17 @@ const HomeScreen = () => {
           </Text>
         </TouchableOpacity>
 
+        {/* Network Loading State */}
+        {isNetworkLoading && renderLoading()}
+
         {/* Loading State */}
-        {loading && !isRefreshing && renderLoading()}
+        {loading && !isRefreshing && !isNetworkLoading && renderLoading()}
 
         {/* Error State */}
-        {error && !loading && renderError()}
+        {error && !loading && !isNetworkLoading && renderError()}
 
         {/* Products Grid */}
-        {!loading && !error && (
+        {!loading && !error && !isNetworkLoading && (
           <View style={styles.productsGrid}>
             {featuredProducts.map((product) => (
               <TouchableOpacity
@@ -248,7 +366,7 @@ const HomeScreen = () => {
         )}
 
         {/* Empty State */}
-        {!loading && !error && featuredProducts.length === 0 && (
+        {!loading && !error && !isNetworkLoading && featuredProducts.length === 0 && (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyIcon}>📦</Text>
             <Text style={styles.emptyTitle}>No Featured Products</Text>
@@ -337,6 +455,35 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#9bf89bff',
   },
+  // Network Status Styles
+  networkStatus: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  networkOnline: {
+    backgroundColor: '#4caf50',
+  },
+  networkOffline: {
+    backgroundColor: '#f44336',
+  },
+  networkStatusText: {
+    color: '#ffffff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  networkLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  networkLoadingText: {
+    color: '#ffffff',
+    fontSize: 12,
+    opacity: 0.9,
+  },
   heroSection: {
     backgroundColor: '#2e7d32',
     padding: 30,
@@ -421,6 +568,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
+  headerRight: {
+    alignItems: 'flex-end',
+  },
   sectionTitle: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -446,6 +596,14 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 16,
     color: '#2e7d32',
+    textAlign: 'center',
+  },
+  loadingSubtext: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   // Error Styles
   errorContainer: {
@@ -469,11 +627,27 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     lineHeight: 22,
   },
+  offlineActions: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  offlineText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    fontStyle: 'italic',
+    marginBottom: 8,
+  },
   retryButton: {
     backgroundColor: '#2e7d32',
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
+    minWidth: 120,
+    alignItems: 'center',
+  },
+  offlineButton: {
+    backgroundColor: '#ff9800',
   },
   retryButtonText: {
     color: '#ffffff',

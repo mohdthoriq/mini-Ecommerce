@@ -12,21 +12,31 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { HomeStackParamList, Product, ApiProduct } from '../../types'; // ✅ Import types
+import { DrawerNavigationProp } from '@react-navigation/drawer';
+import { RootDrawerParamList, Product, ApiProduct } from '../../types';
 import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
+import { useInternet } from '../../context/InternetContext';
+import { useNetworkAwareAction } from '../../hooks/useNetworkAwareAction';
 
-type ProductListScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList, 'ProductList'>;
+type ProductListScreenNavigationProp = DrawerNavigationProp<RootDrawerParamList, 'ProductList'>;
 
 const ProductListScreen = () => {
   const navigation = useNavigation<ProductListScreenNavigationProp>();
-  
+  const { isInternetReachable } = useInternet();
+  const { executeIfOnline } = useNetworkAwareAction();
+
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+
+  // Exponential Backoff State
+  const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [maxRetries] = useState(3);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   // Convert API product to our Product interface
   const convertApiProduct = (apiProduct: ApiProduct): Product => {
@@ -38,37 +48,160 @@ const ProductListScreen = () => {
       description: apiProduct.description,
       image: apiProduct.thumbnail,
       discount: apiProduct.discountPercentage,
-      isNew: apiProduct.stock > 50 // Contoh logic untuk new product
+      isNew: apiProduct.stock > 50
     };
   };
 
-  // Fetch products from API
-  const fetchProducts = async () => {
+  // Exponential Backoff Delay Calculator
+  const getRetryDelay = (attempt: number): number => {
+    return Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+  };
+
+  // Fetch products from API with Exponential Backoff Retry + Network Awareness
+  const fetchProducts = async (isManualRetry: boolean = false) => {
     try {
-      const response = await fetch('https://dummyjson.com/products');
-      const data = await response.json();
-      
-      if (data && data.products) {
-        // Convert API products to our Product format
-        const convertedProducts: Product[] = data.products.map((apiProduct: ApiProduct) => 
-          convertApiProduct(apiProduct)
-        );
-        
-        setProducts(convertedProducts);
-        setFilteredProducts(convertedProducts);
+      // Check internet connection before attempting fetch
+      if (!isInternetReachable) {
+        setError('Tidak ada koneksi internet. Periksa koneksi Anda.');
+        setLoading(false);
+        setRefreshing(false);
+        return;
       }
-    } catch (error) {
-      console.error('Error fetching products:', error);
-      Alert.alert('Error', 'Failed to fetch products');
+
+      // Reset states for new attempt
+      if (isManualRetry) {
+        setRetryCount(0);
+        setError(null);
+        setIsRetrying(false);
+      }
+
+      setLoading(true);
+      const currentAttempt = retryCount + 1;
+      console.log(`🔄 Fetch attempt ${currentAttempt}/${maxRetries + 1}`, {
+        isOnline: isInternetReachable
+      });
+
+      // Use network-aware execution
+      await executeIfOnline(async () => {
+        const response = await fetch('https://dummyjson.com/products');
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        if (data && data.products) {
+          // Convert API products to our Product format
+          const convertedProducts: Product[] = data.products.map((apiProduct: ApiProduct) =>
+            convertApiProduct(apiProduct)
+          );
+
+          setProducts(convertedProducts);
+          setFilteredProducts(convertedProducts);
+          setError(null);
+          setRetryCount(0);
+          setIsRetrying(false);
+
+          console.log('✅ Products loaded successfully');
+        }
+      }, {
+        showAlert: false, // We'll handle the alert ourselves in the UI
+        alertMessage: 'Tidak dapat memuat produk saat offline.'
+      });
+
+    } catch (err: unknown) {
+      // Type-safe error handling
+      console.error(`❌ Fetch attempt ${retryCount + 1} failed:`, err);
+
+      let errorMessage = 'Unknown error occurred';
+
+      // Handle different error types
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      } else if (err && typeof err === 'object' && 'message' in err) {
+        errorMessage = String((err as any).message);
+      }
+
+      // Handle network-specific errors
+      if (errorMessage === 'NO_INTERNET_CONNECTION') {
+        setError('Tidak ada koneksi internet. Periksa koneksi Anda.');
+        setIsRetrying(false);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      // Check if we should retry (only if we have internet)
+      if (retryCount < maxRetries && isInternetReachable) {
+        const delay = getRetryDelay(retryCount);
+        const nextAttempt = retryCount + 2;
+
+        console.log(`⏳ Retrying in ${delay / 1000}s... (Attempt ${nextAttempt})`);
+        setIsRetrying(true);
+
+        // Show temporary error message
+        setError(`Gagal memuat produk. Mencoba lagi dalam ${delay / 1000} detik... (${retryCount + 1}/${maxRetries})`);
+
+        // Schedule retry with exponential backoff
+        setTimeout(() => {
+          console.log(`🚀 Executing auto-retry ${nextAttempt}`);
+          setRetryCount(prev => prev + 1);
+        }, delay);
+      } else {
+        // Max retries reached or no internet - show permanent error
+        setIsRetrying(false);
+        if (!isInternetReachable) {
+          setError('Tidak ada koneksi internet. Periksa koneksi Anda.');
+        } else {
+          setError(`Gagal memuat produk setelah ${maxRetries + 1} percobaan. ${errorMessage}`);
+        }
+        console.error(`💥 All ${maxRetries + 1} attempts failed`);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
+  // Manual retry function with network check
+  const handleManualRetry = () => {
+    console.log('🔄 Manual retry triggered', { isOnline: isInternetReachable });
+
+    if (!isInternetReachable) {
+      Alert.alert(
+        'Tidak Terkoneksi',
+        'Tidak ada koneksi internet. Periksa koneksi Anda dan coba lagi.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    fetchProducts(true);
+  };
 
   useEffect(() => {
     fetchProducts();
   }, []);
+
+  // Trigger automatic retry when retryCount changes (only if online)
+  useEffect(() => {
+    if (retryCount > 0 && retryCount <= maxRetries && isInternetReachable) {
+      fetchProducts();
+    }
+  }, [retryCount, isInternetReachable]);
+
+  // Handle network connection recovery
+  useEffect(() => {
+    if (isInternetReachable && error && error.includes('Tidak ada koneksi internet')) {
+      console.log('🌐 Connection recovered, auto-retrying...');
+      setError('Koneksi pulih. Memuat ulang produk...');
+      setTimeout(() => {
+        fetchProducts(true);
+      }, 1000);
+    }
+  }, [isInternetReachable]);
 
   // Filter products based on search and category
   useEffect(() => {
@@ -94,7 +227,19 @@ const ProductListScreen = () => {
   }, [searchQuery, selectedCategory, products]);
 
   const onRefresh = () => {
+    if (!isInternetReachable) {
+      Alert.alert(
+        'Tidak Terkoneksi',
+        'Tidak dapat refresh produk saat offline.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     setRefreshing(true);
+    setRetryCount(0);
+    setError(null);
+    setIsRetrying(false);
     fetchProducts();
   };
 
@@ -122,10 +267,10 @@ const ProductListScreen = () => {
       onPress={() => handleProductPress(item)}
     >
       <Image source={{ uri: item.image }} style={styles.productImage} />
-      
+
       {item.discount && item.discount > 0 && (
         <View style={styles.discountBadge}>
-          <Text style={styles.discountText}>-{item.discount}%</Text>
+          <Text style={styles.discountText}>-{Math.round(item.discount)}%</Text>
         </View>
       )}
 
@@ -139,8 +284,10 @@ const ProductListScreen = () => {
         <Text style={styles.productTitle} numberOfLines={2}>
           {item.name}
         </Text>
-        
-        <Text style={styles.productCategory}>{item.category}</Text>
+
+        <Text style={styles.productCategory}>
+          {item.category}
+        </Text>
 
         <View style={styles.priceContainer}>
           {item.discount && item.discount > 0 ? (
@@ -166,7 +313,6 @@ const ProductListScreen = () => {
     </TouchableOpacity>
   );
 
-  // ... rest of the code remains the same
   const renderCategoryChip = (category: string) => (
     <TouchableOpacity
       key={category}
@@ -185,26 +331,100 @@ const ProductListScreen = () => {
     </TouchableOpacity>
   );
 
-  if (loading) {
+  // Show permanent error UI after all retries failed or no internet
+  if (error && !isRetrying && (retryCount >= maxRetries || !isInternetReachable)) {
+    return (
+      <View style={styles.errorContainer}>
+        <FontAwesome6
+          name={isInternetReachable ? "triangle-exclamation" : "wifi"}
+          size={64}
+          color={isInternetReachable ? "#ff6b6b" : "#6b7280"}
+          iconStyle='solid'
+        />
+        <Text style={styles.errorTitle}>
+          {isInternetReachable ? 'Gagal Memuat Produk' : 'Tidak Terkoneksi'}
+        </Text>
+        <Text style={styles.errorMessage}>{error}</Text>
+        <Text style={styles.retryInfo}>
+          {!isInternetReachable
+            ? 'Sambungkan perangkat Anda ke internet'
+            : `${maxRetries + 1} percobaan otomatis telah dilakukan`
+          }
+        </Text>
+        <TouchableOpacity
+          style={[
+            styles.retryButton,
+            !isInternetReachable && styles.retryButtonOffline
+          ]}
+          onPress={handleManualRetry}
+        >
+          <Text style={styles.retryButtonText}>
+            {isInternetReachable ? 'Coba Lagi Manual' : 'Coba Lagi'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // Show loading with retry info during retries
+  if (loading || isRetrying) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#2e7d32" />
-        <Text style={styles.loadingText}>Loading products...</Text>
+        <Text style={styles.loadingText}>
+          {isRetrying
+            ? `Mencoba lagi... (${retryCount + 1}/${maxRetries})`
+            : 'Loading products...'
+          }
+        </Text>
+        {isRetrying && (
+          <Text style={styles.retryInfo}>
+            Percobaan otomatis {retryCount + 1} dari {maxRetries}
+          </Text>
+        )}
+        {error && isRetrying && (
+          <Text style={styles.retryDetail}>{error}</Text>
+        )}
+        {!isInternetReachable && (
+          <Text style={styles.offlineWarning}>
+            ⚠️ Sedang offline - menunggu koneksi...
+          </Text>
+        )}
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      {/* Network Status Indicator */}
+      {!isInternetReachable && (
+        <View style={styles.offlineIndicator}>
+          <FontAwesome6 name="wifi" size={14} color="#ffffff" iconStyle='solid' />
+          <Text style={styles.offlineIndicatorText}>Mode Offline</Text>
+        </View>
+      )}
+
+      {/* Temporary Error Banner during retries */}
+      {error && isRetrying && (
+        <View style={styles.retryBanner}>
+          <FontAwesome6 name="clock-rotate-left" size={16} color="#fff" iconStyle='solid' />
+          <Text style={styles.retryBannerText}>{error}</Text>
+        </View>
+      )}
+
       {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <FontAwesome6 name="magnifying-glass"  size={16} color="#666" iconStyle='solid' />
+      <View style={[
+        styles.searchContainer,
+        !isInternetReachable && styles.searchContainerOffline
+      ]}>
+        <FontAwesome6 name="magnifying-glass" size={16} color="#666" iconStyle='solid' />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search products..."
+          placeholder={isInternetReachable ? "Search products..." : "Search (offline mode)"}
           value={searchQuery}
           onChangeText={setSearchQuery}
           placeholderTextColor="#999"
+          editable={isInternetReachable || products.length > 0}
         />
         {searchQuery ? (
           <TouchableOpacity onPress={() => setSearchQuery('')}>
@@ -225,10 +445,11 @@ const ProductListScreen = () => {
         />
       </View>
 
-      {/* Products Count */}
+      {/* Products Count with Online Status */}
       <View style={styles.resultsContainer}>
         <Text style={styles.resultsText}>
           {filteredProducts.length} products found
+          {!isInternetReachable && ' • Offline'}
         </Text>
       </View>
 
@@ -245,14 +466,25 @@ const ProductListScreen = () => {
             refreshing={refreshing}
             onRefresh={onRefresh}
             colors={['#2e7d32']}
+            enabled={isInternetReachable} // Disable pull-to-refresh when offline
           />
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <FontAwesome6 name="box-open" size={64} color="#ccc" iconStyle='solid' />
-            <Text style={styles.emptyText}>No products found</Text>
+            <FontAwesome6
+              name={isInternetReachable ? "box-open" : "wifi"}
+              size={64}
+              color="#ccc"
+              iconStyle='solid'
+            />
+            <Text style={styles.emptyText}>
+              {isInternetReachable ? 'No products found' : 'Tidak Terkoneksi'}
+            </Text>
             <Text style={styles.emptySubtext}>
-              Try adjusting your search or filter
+              {isInternetReachable
+                ? 'Try adjusting your search or filter'
+                : 'Sambungkan ke internet untuk memuat produk'
+              }
             </Text>
           </View>
         }
@@ -262,7 +494,6 @@ const ProductListScreen = () => {
   );
 };
 
-// Styles tetap sama...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -274,11 +505,100 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#f0f7f0',
+    padding: 20,
   },
   loadingText: {
     marginTop: 12,
     fontSize: 16,
     color: '#2e7d32',
+    textAlign: 'center',
+  },
+  offlineWarning: {
+    fontSize: 14,
+    color: '#dc2626',
+    textAlign: 'center',
+    marginTop: 8,
+    fontWeight: '500',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f0f7f0',
+    padding: 20,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#d32f2f',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  retryInfo: {
+    fontSize: 14,
+    color: '#888',
+    textAlign: 'center',
+    marginBottom: 20,
+    fontStyle: 'italic',
+  },
+  retryDetail: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+  retryButton: {
+    backgroundColor: '#2e7d32',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    elevation: 2,
+  },
+  retryButtonOffline: {
+    backgroundColor: '#6b7280',
+  },
+  retryButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  retryBanner: {
+    backgroundColor: '#ff9800',
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  retryBannerText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  offlineIndicator: {
+    backgroundColor: '#6b7280',
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 12,
+    alignSelf: 'flex-start',
+    gap: 6,
+  },
+  offlineIndicatorText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '500',
   },
   searchContainer: {
     flexDirection: 'row',
@@ -293,6 +613,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
+  },
+  searchContainerOffline: {
+    backgroundColor: '#f3f4f6',
+    opacity: 0.7,
   },
   searchInput: {
     flex: 1,

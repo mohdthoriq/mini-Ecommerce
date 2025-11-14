@@ -5,6 +5,7 @@ import HomeScreen from '../screens/dashboard/Home';
 import ProductDetailScreen from '../screens/dashboard/ProductDetailScreen';
 import ProfileScreen from '../screens/dashboard/Profile';
 import LoginScreen from '../screens/auth/Login';
+import TestErrorScreen from '../screens/auth/TestErrorScreen';
 
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
@@ -13,40 +14,46 @@ const HomeStackNavigator = () => {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerShown: false, 
+        headerShown: false,
       }}
       initialRouteName="Home"
     >
-      <Stack.Screen 
-        name="Home" 
+      <Stack.Screen
+        name="Home"
         component={HomeScreen}
-        options={{ 
+        options={{
           title: '🌿 Eco Shop',
         }}
       />
-      <Stack.Screen 
-        name="ProductDetail" 
+      <Stack.Screen
+        name="ProductDetail"
         component={ProductDetailScreen}
-        options={{ 
+        options={{
           title: 'Product Details',
-           headerShown: true, 
+          headerShown: true,
         }}
       />
-      <Stack.Screen 
-        name="Profile" 
+      <Stack.Screen
+        name="Profile"
         component={ProfileScreen}
-        options={{ 
+        options={{
           title: 'My Profile',
-           headerShown: true,
+          headerShown: true,
         }}
       />
-      <Stack.Screen 
-        name="Login" 
+      <Stack.Screen
+        name="Login"
         component={LoginScreen}
-        options={{ 
+        options={{
           title: 'Login',
           headerShown: false,
         }}
+      />
+
+      <Stack.Screen
+        name="TestError"
+        component={TestErrorScreen}
+        options={{ title: 'Test Error' }}
       />
     </Stack.Navigator>
   );

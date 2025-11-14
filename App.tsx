@@ -40,22 +40,32 @@ import { SwipeProvider } from './src/context/SwipeContext';
 import AnalyticsNavigationContainer from './src/routes/AnalyticsNavigationContainer';
 import Navigation from './src/routes';
 import { CartProvider } from './src/context/CartContext';
+import ErrorBoundary from './src/components/ErrorBoundary';
+import { InternetProvider } from './src/context/InternetContext';
+import InternetStatusHandler from './src/components/InternetStatusHandler';
 
 const App = () => {
   return (
-    <AuthProvider>
-      <CartProvider>
-        <SwipeProvider>
-          <AnalyticsNavigationContainer>
-            <StatusBar 
-              backgroundColor="#2e7d32" 
-              barStyle="light-content" 
-            />
-            <Navigation />
-          </AnalyticsNavigationContainer>
-        </SwipeProvider>
-      </CartProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <InternetProvider>
+        <AuthProvider>
+          <CartProvider>
+            <SwipeProvider>
+              <AnalyticsNavigationContainer>
+                {/* InternetStatusHandler untuk manage offline state secara global */}
+                <InternetStatusHandler>
+                  <StatusBar 
+                    backgroundColor="#2e7d32" 
+                    barStyle="light-content" 
+                  />
+                  <Navigation />
+                </InternetStatusHandler>
+              </AnalyticsNavigationContainer>
+            </SwipeProvider>
+          </CartProvider>
+        </AuthProvider>
+      </InternetProvider>
+    </ErrorBoundary>
   );
 };
 
