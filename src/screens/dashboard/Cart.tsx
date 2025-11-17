@@ -27,9 +27,12 @@ const CartScreen = () => {
         cartItems,
         updateQuantity,
         removeFromCart,
+        clearCart,
         cartItemCount,
         totalPrice,
-        refreshCart
+        refreshCart,
+        isCartLoading,
+        lastCartError
     } = useCart();
     const [loading, setLoading] = useState(false);
     const [couponCode, setCouponCode] = useState('');
@@ -38,6 +41,30 @@ const CartScreen = () => {
     const [lastUpdate, setLastUpdate] = useState<string>('Just now');
     const [connectionType, setConnectionType] = useState<string | null>(null);
 
+    // ✅ Effect untuk handle cart errors
+    useEffect(() => {
+        if (lastCartError) {
+            Alert.alert(
+                'Cart Error',
+                lastCartError,
+                [
+                    { 
+                        text: 'Clear Cart', 
+                        onPress: () => handleClearCart(),
+                        style: 'destructive'
+                    },
+                    { 
+                        text: 'Retry', 
+                        onPress: () => handleRefreshCart()
+                    },
+                    { 
+                        text: 'Ignore', 
+                        style: 'cancel' 
+                    }
+                ]
+            );
+        }
+    }, [lastCartError]);
 
     // ✅ POLLING IMPLEMENTATION dengan optimasi bandwidth
     useEffect(() => {
@@ -95,8 +122,61 @@ const CartScreen = () => {
         };
     }, [refreshCart]);
 
+    // ✅ Optimized quantity update dengan error handling
+    const handleUpdateQuantity = async (productId: string, newQuantity: number) => {
+        try {
+            await updateQuantity(productId, newQuantity);
+        } catch (error: any) {
+            Alert.alert('Update Failed', error.message || 'Failed to update quantity');
+        }
+    };
 
-    // Function untuk manual refresh
+    // ✅ Optimized remove item dengan error handling
+    const handleRemoveItem = async (itemId: string) => {
+        Alert.alert(
+            'Remove Item',
+            'Are you sure you want to remove this item from your cart?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Remove',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await removeFromCart(itemId);
+                        } catch (error: any) {
+                            Alert.alert('Remove Failed', error.message || 'Failed to remove item');
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    // ✅ Handle clear cart dengan confirmation
+    const handleClearCart = async () => {
+        Alert.alert(
+            'Clear Cart',
+            'Are you sure you want to clear your entire cart?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Clear All',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await clearCart();
+                            Alert.alert('Success', 'Cart cleared successfully');
+                        } catch (error: any) {
+                            Alert.alert('Clear Failed', error.message || 'Failed to clear cart');
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    // ✅ Function untuk manual refresh dengan error handling
     const handleManualRefresh = async () => {
         if (connectionType === 'cellular') {
             Alert.alert(
@@ -119,21 +199,17 @@ const CartScreen = () => {
         }
     };
 
-    const removeItem = (itemId: string) => {
-        Alert.alert(
-            'Remove Item',
-            'Are you sure you want to remove this item from your cart?',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Remove',
-                    style: 'destructive',
-                    onPress: () => {
-                        removeFromCart(itemId);
-                    }
-                }
-            ]
-        );
+    // ✅ Refresh cart function dengan error handling
+    const handleRefreshCart = async () => {
+        try {
+            setLoading(true);
+            await refreshCart();
+            setLastUpdate(new Date().toLocaleTimeString());
+        } catch (error: any) {
+            Alert.alert('Refresh Failed', error.message || 'Failed to refresh cart');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const applyCoupon = () => {
@@ -194,7 +270,25 @@ const CartScreen = () => {
         navigation.goBack();
     };
 
-    // Tampilkan status polling dan koneksi
+    // ✅ Tampilkan status error banner
+    const renderErrorBanner = () => {
+        if (!lastCartError) return null;
+
+        return (
+            <View style={styles.errorBanner}>
+                <FontAwesome6 name="triangle-exclamation" size={16} color="#ffffff" iconStyle='solid' />
+                <Text style={styles.errorBannerText}>{lastCartError}</Text>
+                <TouchableOpacity 
+                    onPress={handleRefreshCart}
+                    style={styles.retryButtonSmall}
+                >
+                    <Text style={styles.retryButtonText}>Retry</Text>
+                </TouchableOpacity>
+            </View>
+        );
+    };
+
+    // ✅ Tampilkan status polling dan koneksi
     const renderPollingStatus = () => (
         <View style={styles.pollingStatus}>
             <View style={styles.statusRow}>
@@ -221,7 +315,8 @@ const CartScreen = () => {
         </View>
     );
 
-    if (loading) {
+    // ✅ Loading state untuk cart operations
+    if (isCartLoading && cartItems.length === 0) {
         return (
             <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#10b981" />
@@ -232,17 +327,47 @@ const CartScreen = () => {
 
     return (
         <View style={styles.container}>
-            {/* Header dengan status polling */}
+            {/* Header dengan status polling dan error indicator */}
             <View style={styles.header}>
                 <View style={styles.headerMain}>
-                    <Text style={styles.headerTitle}>Shopping Cart</Text>
+                    <View style={styles.headerTitleContainer}>
+                        <Text style={styles.headerTitle}>Shopping Cart</Text>
+                        {lastCartError && (
+                            <TouchableOpacity 
+                                style={styles.errorIndicator}
+                                onPress={handleRefreshCart}
+                            >
+                                <FontAwesome6 name="triangle-exclamation" size={16} color="#ffffff" iconStyle='solid' />
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                    {cartItems.length > 0 && (
+                        <TouchableOpacity 
+                            style={styles.clearCartButton}
+                            onPress={handleClearCart}
+                        >
+                            <FontAwesome6 name="broom" size={16} color="#ef4444" iconStyle='solid' />
+                            <Text style={styles.clearCartText}>Clear</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
                 {renderPollingStatus()}
             </View>
 
+            {/* Error Banner */}
+            {renderErrorBanner()}
+
             <ScrollView
                 style={styles.content}
                 showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={loading}
+                        onRefresh={handleRefreshCart}
+                        colors={['#10b981']}
+                        tintColor="#10b981"
+                    />
+                }
             >
                 {cartItems.length === 0 ? (
                     // Empty Cart State
@@ -264,9 +389,14 @@ const CartScreen = () => {
                     <>
                         {/* Cart Items List */}
                         <View style={styles.cartItemsSection}>
-                            <Text style={styles.sectionTitle}>
-                                Cart Items ({cartItemCount})
-                            </Text>
+                            <View style={styles.sectionHeader}>
+                                <Text style={styles.sectionTitle}>
+                                    Cart Items ({cartItemCount})
+                                </Text>
+                                {isCartLoading && (
+                                    <ActivityIndicator size="small" color="#10b981" />
+                                )}
+                            </View>
                             {cartItems.map((item) => (
                                 <View key={item.id} style={styles.cartItem}>
                                     <Image
@@ -293,10 +423,15 @@ const CartScreen = () => {
                                                     styles.quantityButton,
                                                     item.quantity <= 1 && styles.quantityButtonDisabled
                                                 ]}
-                                                onPress={() => updateQuantity(item.product.id, item.quantity - 1)}
-                                                disabled={item.quantity <= 1}
+                                                onPress={() => handleUpdateQuantity(item.product.id, item.quantity - 1)}
+                                                disabled={item.quantity <= 1 || isCartLoading}
                                             >
-                                                <FontAwesome6 name="minus" size={12} color={item.quantity <= 1 ? '#9ca3af' : '#374151'} iconStyle='solid' />
+                                                <FontAwesome6 
+                                                    name="minus" 
+                                                    size={12} 
+                                                    color={item.quantity <= 1 ? '#9ca3af' : '#374151'} 
+                                                    iconStyle='solid' 
+                                                />
                                             </TouchableOpacity>
                                             <Text style={styles.quantityText}>{item.quantity}</Text>
                                             <TouchableOpacity
@@ -304,10 +439,15 @@ const CartScreen = () => {
                                                     styles.quantityButton,
                                                     item.quantity >= (item.product.stock || 10) && styles.quantityButtonDisabled
                                                 ]}
-                                                onPress={() => updateQuantity(item.product.id, item.quantity + 1)}
-                                                disabled={item.quantity >= (item.product.stock || 10)}
+                                                onPress={() => handleUpdateQuantity(item.product.id, item.quantity + 1)}
+                                                disabled={item.quantity >= (item.product.stock || 10) || isCartLoading}
                                             >
-                                                <FontAwesome6 name="plus" size={12} color={item.quantity >= (item.product.stock || 10) ? '#9ca3af' : '#374151'} iconStyle='solid' />
+                                                <FontAwesome6 
+                                                    name="plus" 
+                                                    size={12} 
+                                                    color={item.quantity >= (item.product.stock || 10) ? '#9ca3af' : '#374151'} 
+                                                    iconStyle='solid' 
+                                                />
                                             </TouchableOpacity>
                                         </View>
                                     </View>
@@ -319,7 +459,8 @@ const CartScreen = () => {
                                         </Text>
                                         <TouchableOpacity
                                             style={styles.removeButton}
-                                            onPress={() => removeItem(item.product.id)}
+                                            onPress={() => handleRemoveItem(item.product.id)}
+                                            disabled={isCartLoading}
                                         >
                                             <FontAwesome6 name="trash" size={16} color="#ef4444" iconStyle='solid' />
                                         </TouchableOpacity>
@@ -337,14 +478,17 @@ const CartScreen = () => {
                                     placeholder="Enter coupon code"
                                     value={couponCode}
                                     onChangeText={setCouponCode}
-                                    editable={!appliedCoupon}
+                                    editable={!appliedCoupon && !isCartLoading}
+                                    placeholderTextColor="#999"
                                 />
                                 <TouchableOpacity
                                     style={[
                                         styles.couponButton,
-                                        appliedCoupon && styles.couponButtonApplied
+                                        appliedCoupon && styles.couponButtonApplied,
+                                        isCartLoading && styles.buttonDisabled
                                     ]}
                                     onPress={appliedCoupon ? () => setAppliedCoupon(false) : applyCoupon}
+                                    disabled={isCartLoading}
                                 >
                                     <Text style={styles.couponButtonText}>
                                         {appliedCoupon ? 'Applied' : 'Apply'}
@@ -419,20 +563,31 @@ const CartScreen = () => {
             {cartItems.length > 0 && (
                 <View style={styles.footer}>
                     <TouchableOpacity
-                        style={styles.checkoutButton}
+                        style={[
+                            styles.checkoutButton,
+                            isCartLoading && styles.buttonDisabled
+                        ]}
                         onPress={proceedToCheckout}
+                        disabled={isCartLoading}
                     >
                         <View style={styles.checkoutInfo}>
-                            <Text style={styles.checkoutText}>Proceed to Checkout</Text>
+                            <Text style={styles.checkoutText}>
+                                {isCartLoading ? 'Processing...' : 'Proceed to Checkout'}
+                            </Text>
                             <Text style={styles.checkoutTotal}>${getTotal().toFixed(2)}</Text>
                         </View>
-                        <FontAwesome6 name="arrow-right" size={16} color="#ffffff" iconStyle='solid' />
+                        {!isCartLoading && (
+                            <FontAwesome6 name="arrow-right" size={16} color="#ffffff" iconStyle='solid' />
+                        )}
                     </TouchableOpacity>
                 </View>
             )}
         </View>
     );
 };
+
+// Tambahkan RefreshControl import
+import { RefreshControl } from 'react-native';
 
 const styles = StyleSheet.create({
     container: {
@@ -463,12 +618,17 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         marginBottom: 12,
     },
+    headerTitleContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
     headerTitle: {
         fontSize: 20,
         fontWeight: '700',
         color: '#111827',
     },
-    cartCount: {
+    errorIndicator: {
         backgroundColor: '#ef4444',
         width: 24,
         height: 24,
@@ -476,7 +636,42 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    cartCountText: {
+    clearCartButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#fef2f2',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 6,
+        gap: 4,
+    },
+    clearCartText: {
+        color: '#ef4444',
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    errorBanner: {
+        backgroundColor: '#ef4444',
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        margin: 16,
+        borderRadius: 8,
+        gap: 8,
+    },
+    errorBannerText: {
+        color: '#ffffff',
+        fontSize: 14,
+        flex: 1,
+        fontWeight: '500',
+    },
+    retryButtonSmall: {
+        backgroundColor: 'rgba(255,255,255,0.3)',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 4,
+    },
+    retryButtonText: {
         color: '#ffffff',
         fontSize: 12,
         fontWeight: '600',
@@ -594,11 +789,16 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#f3f4f6',
     },
+    sectionHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
     sectionTitle: {
         fontSize: 18,
         fontWeight: '600',
         color: '#111827',
-        marginBottom: 16,
     },
     cartItem: {
         flexDirection: 'row',
@@ -702,6 +902,10 @@ const styles = StyleSheet.create({
     },
     couponButtonApplied: {
         backgroundColor: '#059669',
+    },
+    buttonDisabled: {
+        backgroundColor: '#9ca3af',
+        opacity: 0.6,
     },
     couponButtonText: {
         color: '#ffffff',

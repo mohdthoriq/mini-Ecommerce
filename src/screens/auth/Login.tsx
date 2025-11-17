@@ -16,13 +16,13 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 import { HomeStackParamList } from '../../types';
 import { AuthContext } from '../../context/AuthContext';
-import { validateEmail, validatePassword } from '../../utils/validation';
+import { validateUsername, validateEmail, validatePassword } from '../../utils/validation';
 
 type LoginScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList>;
 
 const LoginScreen = () => {
     const navigation = useNavigation<LoginScreenNavigationProp>();
-    const { login, isAuthenticated } = useContext(AuthContext);
+    const { login, isAuthenticated, loadingAuth } = useContext(AuthContext);
 
     const [form, setForm] = useState({
         username: '',
@@ -62,17 +62,29 @@ const LoginScreen = () => {
     };
 
     const validateForm = (): boolean => {
+        const usernameError = form.username ? validateUsername(form.username) : '';
         const emailError = validateEmail(form.email);
         const passwordError = validatePassword(form.password);
 
         setErrors({
-            username: '',
+            username: usernameError,
             email: emailError,
             password: passwordError,
         });
 
-        return !emailError && !passwordError;
+        return !usernameError && !emailError && !passwordError;
     };
+
+    React.useEffect(() => {
+        // Validate on form change (optional)
+        if (form.email || form.password || form.username) {
+            const timeoutId = setTimeout(() => {
+                validateForm();
+            }, 500);
+
+            return () => clearTimeout(timeoutId);
+        }
+    }, [form.email, form.password, form.username]);
 
     const handleLogin = async () => {
         if (!validateForm()) return;
@@ -80,27 +92,73 @@ const LoginScreen = () => {
         setIsLoading(true);
 
         try {
-            const success = await login(form.username, form.email, form.password);
+            // Ganti dengan API call sesungguhnya untuk mendapatkan token
+            const token = await authenticateWithAPI(form.email, form.password);
 
-            if (success) {
-                // Navigation akan dihandle oleh useEffect di atas
-                Alert.alert('Success', 'Welcome back!');
-            } else {
-                Alert.alert('Error', 'Invalid email or password. Please try again.');
-            }
+            const userData = {
+                id: '1', // Ganti dengan ID dari API response
+                username: form.username || form.email.split('@')[0],
+                email: form.email,
+                name: form.username || 'User',
+                avatar: undefined,
+            };
+
+            await login(token, userData);
+            // Navigation akan dihandle oleh useEffect di atas
+            Alert.alert('Success', 'Welcome back!');
         } catch (error) {
-            Alert.alert('Error', 'Something went wrong. Please try again.');
+            Alert.alert('Error', 'Invalid email or password. Please try again.');
         } finally {
             setIsLoading(false);
         }
     };
 
-    const handleDemoLogin = () => {
+    React.useEffect(() => {
+        if (isAuthenticated) {
+            navigation.reset({
+                index: 0,
+                routes: [{ name: 'Home' }],
+            });
+        }
+    }, [isAuthenticated, navigation]);
+
+    const authenticateWithAPI = async (email: string, password: string): Promise<string> => {
+        // Simulasi API call delay
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        // Demo logic - ganti dengan API call sesungguhnya
+        if (email && password) {
+            return 'demo-jwt-token-' + Date.now();
+        }
+        throw new Error('Authentication failed');
+    };
+
+    const handleDemoLogin = async () => {
         setForm({
             username: 'Demo User',
             email: 'user@example.com',
             password: 'password',
         });
+
+        // Auto login dengan demo credentials
+        setIsLoading(true);
+        try {
+            const token = 'demo-token-' + Date.now();
+            const userData = {
+                id: 'demo-1',
+                username: 'demouser',
+                email: 'user@example.com',
+                name: 'Demo User',
+                avatar: undefined,
+            };
+
+            await login(token, userData);
+            Alert.alert('Success', 'Demo login successful!');
+        } catch (error) {
+            Alert.alert('Error', 'Demo login failed');
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const toggleShowPassword = () => {
@@ -110,6 +168,15 @@ const LoginScreen = () => {
     const handleBack = () => {
         navigation.goBack();
     };
+
+    if (loadingAuth) {
+        return (
+            <View style={styles.splashContainer}>
+                <ActivityIndicator size="large" color="#2e7d32" />
+                <Text style={styles.splashText}>Checking authentication...</Text>
+            </View>
+        );
+    }
 
     return (
         <KeyboardAvoidingView
@@ -487,6 +554,17 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#333',
         fontWeight: '500',
+    },
+    splashContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#f8f9fa',
+    },
+    splashText: {
+        marginTop: 16,
+        fontSize: 16,
+        color: '#2e7d32',
     },
 });
 

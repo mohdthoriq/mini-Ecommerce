@@ -17,8 +17,13 @@ import { RootDrawerParamList, Product, ApiProduct } from '../../types';
 import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 import { useInternet } from '../../context/InternetContext';
 import { useNetworkAwareAction } from '../../hooks/useNetworkAwareAction';
+import { cacheManager } from '../../utils/cachehelper';
 
 type ProductListScreenNavigationProp = DrawerNavigationProp<RootDrawerParamList, 'ProductList'>;
+
+// Cache keys
+const PRODUCTS_CACHE_KEY = 'products_cache';
+const CATEGORIES_CACHE_KEY = 'categories_cache';
 
 const ProductListScreen = () => {
   const navigation = useNavigation<ProductListScreenNavigationProp>();
@@ -37,12 +42,14 @@ const ProductListScreen = () => {
   const [retryCount, setRetryCount] = useState(0);
   const [maxRetries] = useState(3);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [usingCache, setUsingCache] = useState(false);
 
   // Convert API product to our Product interface
   const convertApiProduct = (apiProduct: ApiProduct): Product => {
     return {
       id: apiProduct.id.toString(),
       name: apiProduct.title,
+      title: apiProduct.title,
       price: apiProduct.price,
       category: apiProduct.category,
       description: apiProduct.description,
@@ -52,17 +59,46 @@ const ProductListScreen = () => {
     };
   };
 
+  // Save products to cache
+  const saveProductsToCache = async (products: Product[]) => {
+    await cacheManager.set(PRODUCTS_CACHE_KEY, products);
+    
+    // Also save categories separately for faster access
+    const categories = ['all', ...new Set(products.map(product => product.category))];
+    await cacheManager.set(CATEGORIES_CACHE_KEY, categories);
+  };
+
+  // Load products from cache
+  const loadProductsFromCache = async (): Promise<Product[] | null> => {
+    return await cacheManager.get<Product[]>(PRODUCTS_CACHE_KEY);
+  };
+
+  // Load categories from cache
+  const loadCategoriesFromCache = async (): Promise<string[] | null> => {
+    return await cacheManager.get<string[]>(CATEGORIES_CACHE_KEY);
+  };
+
   // Exponential Backoff Delay Calculator
   const getRetryDelay = (attempt: number): number => {
     return Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
   };
 
-  // Fetch products from API with Exponential Backoff Retry + Network Awareness
-  const fetchProducts = async (isManualRetry: boolean = false) => {
+  // Fetch products from API with Cache-First Strategy
+  const fetchProducts = async (isManualRetry: boolean = false, forceRefresh: boolean = false) => {
     try {
       // Check internet connection before attempting fetch
       if (!isInternetReachable) {
-        setError('Tidak ada koneksi internet. Periksa koneksi Anda.');
+        // Try to load from cache when offline
+        const cachedProducts = await loadProductsFromCache();
+        if (cachedProducts && cachedProducts.length > 0) {
+          setProducts(cachedProducts);
+          setFilteredProducts(cachedProducts);
+          setError('Mode offline - menggunakan data cache');
+          setUsingCache(true);
+          console.log('📱 Offline mode: Using cached products');
+        } else {
+          setError('Tidak ada koneksi internet dan tidak ada data cache.');
+        }
         setLoading(false);
         setRefreshing(false);
         return;
@@ -73,15 +109,40 @@ const ProductListScreen = () => {
         setRetryCount(0);
         setError(null);
         setIsRetrying(false);
+        setUsingCache(false);
       }
 
       setLoading(true);
-      const currentAttempt = retryCount + 1;
-      console.log(`🔄 Fetch attempt ${currentAttempt}/${maxRetries + 1}`, {
-        isOnline: isInternetReachable
-      });
 
-      // Use network-aware execution
+      // Cache-First Strategy: Check cache first unless force refresh
+      if (!forceRefresh) {
+        const cachedProducts = await loadProductsFromCache();
+        if (cachedProducts && cachedProducts.length > 0) {
+          setProducts(cachedProducts);
+          setFilteredProducts(cachedProducts);
+          setUsingCache(true);
+          console.log('💾 Using cached products');
+          
+          // Continue to fetch fresh data in background
+          fetchFreshProducts();
+          return;
+        }
+      }
+
+      // No cache or force refresh - fetch from API
+      await fetchFreshProducts();
+
+    } catch (err: unknown) {
+      handleFetchError(err);
+    }
+  };
+
+  // Fetch fresh products from API
+  const fetchFreshProducts = async () => {
+    const currentAttempt = retryCount + 1;
+    console.log(`🔄 Fetch attempt ${currentAttempt}/${maxRetries + 1}`);
+
+    try {
       await executeIfOnline(async () => {
         const response = await fetch('https://dummyjson.com/products');
 
@@ -102,69 +163,100 @@ const ProductListScreen = () => {
           setError(null);
           setRetryCount(0);
           setIsRetrying(false);
+          setUsingCache(false);
 
-          console.log('✅ Products loaded successfully');
+          // Save to cache
+          await saveProductsToCache(convertedProducts);
+
+          console.log('✅ Products loaded successfully and cached');
         }
       }, {
-        showAlert: false, // We'll handle the alert ourselves in the UI
+        showAlert: false,
         alertMessage: 'Tidak dapat memuat produk saat offline.'
       });
 
     } catch (err: unknown) {
-      // Type-safe error handling
-      console.error(`❌ Fetch attempt ${retryCount + 1} failed:`, err);
-
-      let errorMessage = 'Unknown error occurred';
-
-      // Handle different error types
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      } else if (typeof err === 'string') {
-        errorMessage = err;
-      } else if (err && typeof err === 'object' && 'message' in err) {
-        errorMessage = String((err as any).message);
-      }
-
-      // Handle network-specific errors
-      if (errorMessage === 'NO_INTERNET_CONNECTION') {
-        setError('Tidak ada koneksi internet. Periksa koneksi Anda.');
-        setIsRetrying(false);
-        setLoading(false);
-        setRefreshing(false);
-        return;
-      }
-
-      // Check if we should retry (only if we have internet)
-      if (retryCount < maxRetries && isInternetReachable) {
-        const delay = getRetryDelay(retryCount);
-        const nextAttempt = retryCount + 2;
-
-        console.log(`⏳ Retrying in ${delay / 1000}s... (Attempt ${nextAttempt})`);
-        setIsRetrying(true);
-
-        // Show temporary error message
-        setError(`Gagal memuat produk. Mencoba lagi dalam ${delay / 1000} detik... (${retryCount + 1}/${maxRetries})`);
-
-        // Schedule retry with exponential backoff
-        setTimeout(() => {
-          console.log(`🚀 Executing auto-retry ${nextAttempt}`);
-          setRetryCount(prev => prev + 1);
-        }, delay);
+      // If API fails, try to use cache as fallback
+      const cachedProducts = await loadProductsFromCache();
+      if (cachedProducts && cachedProducts.length > 0) {
+        setProducts(cachedProducts);
+        setFilteredProducts(cachedProducts);
+        setUsingCache(true);
+        setError('Gagal memuat data terbaru, menggunakan data cache');
+        console.log('🔄 Fallback to cached data after API failure');
       } else {
-        // Max retries reached or no internet - show permanent error
-        setIsRetrying(false);
-        if (!isInternetReachable) {
-          setError('Tidak ada koneksi internet. Periksa koneksi Anda.');
-        } else {
-          setError(`Gagal memuat produk setelah ${maxRetries + 1} percobaan. ${errorMessage}`);
-        }
-        console.error(`💥 All ${maxRetries + 1} attempts failed`);
+        throw err; // Re-throw if no cache available
       }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
+
+  // Handle fetch errors
+  const handleFetchError = async (err: unknown) => {
+    console.error(`❌ Fetch attempt ${retryCount + 1} failed:`, err);
+
+    let errorMessage = 'Unknown error occurred';
+
+    // Handle different error types
+    if (err instanceof Error) {
+      errorMessage = err.message;
+    } else if (typeof err === 'string') {
+      errorMessage = err;
+    } else if (err && typeof err === 'object' && 'message' in err) {
+      errorMessage = String((err as any).message);
+    }
+
+    // Try cache as fallback
+    const cachedProducts = await loadProductsFromCache();
+    if (cachedProducts && cachedProducts.length > 0) {
+      setProducts(cachedProducts);
+      setFilteredProducts(cachedProducts);
+      setUsingCache(true);
+      setError('Gagal memuat data terbaru, menggunakan data cache');
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
+    // Handle network-specific errors
+    if (errorMessage === 'NO_INTERNET_CONNECTION') {
+      setError('Tidak ada koneksi internet. Periksa koneksi Anda.');
+      setIsRetrying(false);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
+    // Check if we should retry (only if we have internet)
+    if (retryCount < maxRetries && isInternetReachable) {
+      const delay = getRetryDelay(retryCount);
+      const nextAttempt = retryCount + 2;
+
+      console.log(`⏳ Retrying in ${delay / 1000}s... (Attempt ${nextAttempt})`);
+      setIsRetrying(true);
+
+      // Show temporary error message
+      setError(`Gagal memuat produk. Mencoba lagi dalam ${delay / 1000} detik... (${retryCount + 1}/${maxRetries})`);
+
+      // Schedule retry with exponential backoff
+      setTimeout(() => {
+        console.log(`🚀 Executing auto-retry ${nextAttempt}`);
+        setRetryCount(prev => prev + 1);
+      }, delay);
+    } else {
+      // Max retries reached or no internet - show permanent error
+      setIsRetrying(false);
+      if (!isInternetReachable) {
+        setError('Tidak ada koneksi internet. Periksa koneksi Anda.');
+      } else {
+        setError(`Gagal memuat produk setelah ${maxRetries + 1} percobaan. ${errorMessage}`);
+      }
+      console.error(`💥 All ${maxRetries + 1} attempts failed`);
+    }
+  };
+
   // Manual retry function with network check
   const handleManualRetry = () => {
     console.log('🔄 Manual retry triggered', { isOnline: isInternetReachable });
@@ -178,7 +270,15 @@ const ProductListScreen = () => {
       return;
     }
 
-    fetchProducts(true);
+    fetchProducts(true, true); // Force refresh on manual retry
+  };
+
+  // Clear cache and refresh
+  const handleClearCache = async () => {
+    await cacheManager.remove(PRODUCTS_CACHE_KEY);
+    await cacheManager.remove(CATEGORIES_CACHE_KEY);
+    Alert.alert('Success', 'Cache cleared successfully');
+    fetchProducts(false, true);
   };
 
   useEffect(() => {
@@ -198,7 +298,7 @@ const ProductListScreen = () => {
       console.log('🌐 Connection recovered, auto-retrying...');
       setError('Koneksi pulih. Memuat ulang produk...');
       setTimeout(() => {
-        fetchProducts(true);
+        fetchProducts(true, true);
       }, 1000);
     }
   }, [isInternetReachable]);
@@ -240,7 +340,8 @@ const ProductListScreen = () => {
     setRetryCount(0);
     setError(null);
     setIsRetrying(false);
-    fetchProducts();
+    setUsingCache(false);
+    fetchProducts(false, true); // Force refresh on pull-to-refresh
   };
 
   const handleProductPress = (product: Product) => {
@@ -362,6 +463,11 @@ const ProductListScreen = () => {
             {isInternetReachable ? 'Coba Lagi Manual' : 'Coba Lagi'}
           </Text>
         </TouchableOpacity>
+        {usingCache && (
+          <Text style={styles.cacheIndicator}>
+            📱 Sedang menggunakan data cache
+          </Text>
+        )}
       </View>
     );
   }
@@ -374,7 +480,7 @@ const ProductListScreen = () => {
         <Text style={styles.loadingText}>
           {isRetrying
             ? `Mencoba lagi... (${retryCount + 1}/${maxRetries})`
-            : 'Loading products...'
+            : usingCache ? 'Memuat data cache...' : 'Loading products...'
           }
         </Text>
         {isRetrying && (
@@ -390,6 +496,11 @@ const ProductListScreen = () => {
             ⚠️ Sedang offline - menunggu koneksi...
           </Text>
         )}
+        {usingCache && (
+          <Text style={styles.cacheIndicator}>
+            💾 Menggunakan data cache
+          </Text>
+        )}
       </View>
     );
   }
@@ -401,6 +512,17 @@ const ProductListScreen = () => {
         <View style={styles.offlineIndicator}>
           <FontAwesome6 name="wifi" size={14} color="#ffffff" iconStyle='solid' />
           <Text style={styles.offlineIndicatorText}>Mode Offline</Text>
+        </View>
+      )}
+
+      {/* Cache Status Indicator */}
+      {usingCache && (
+        <View style={styles.cacheBanner}>
+          <FontAwesome6 name="database" size={14} color="#ffffff" iconStyle='solid' />
+          <Text style={styles.cacheBannerText}>Menggunakan data cache</Text>
+          <TouchableOpacity onPress={handleClearCache} style={styles.clearCacheButton}>
+            <Text style={styles.clearCacheText}>Clear</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -450,6 +572,7 @@ const ProductListScreen = () => {
         <Text style={styles.resultsText}>
           {filteredProducts.length} products found
           {!isInternetReachable && ' • Offline'}
+          {usingCache && ' • Cache'}
         </Text>
       </View>
 
@@ -466,7 +589,7 @@ const ProductListScreen = () => {
             refreshing={refreshing}
             onRefresh={onRefresh}
             colors={['#2e7d32']}
-            enabled={isInternetReachable} // Disable pull-to-refresh when offline
+            enabled={isInternetReachable}
           />
         }
         ListEmptyComponent={
@@ -770,6 +893,39 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
     textAlign: 'center',
+  },
+  cacheBanner: {
+    backgroundColor: '#ff9800',
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  cacheBannerText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 8,
+    flex: 1,
+  },
+  clearCacheButton: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  clearCacheText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  cacheIndicator: {
+    fontSize: 14,
+    color: '#ff9800',
+    textAlign: 'center',
+    marginTop: 8,
+    fontWeight: '500',
   },
 });
 

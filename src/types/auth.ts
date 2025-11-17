@@ -6,6 +6,9 @@ export interface AuthState {
     username: string;
     email: string;
     name: string;
+    phone?: string;
+    address?: string;
+    joinDate?: string;
     avatar?: string;
     // Additional fields from DummyJSON
     firstName?: string;

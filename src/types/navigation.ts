@@ -18,7 +18,9 @@ export type RootDrawerParamList = {
   Analytics: undefined;
   Profile: undefined;
   Settings: undefined;
+  CategoryList: undefined;
   Login: undefined;
+  ProductCategory: { category: string };
   ProductList: undefined;
   ProductDetail: { productId: string }; 
   CheckoutModal: undefined;

@@ -1,5 +1,6 @@
 import { NewProduct, ErrorsState } from '../types';
 
+// Product Validations
 export const validationForm = (product: NewProduct): ErrorsState => {
   const errors: ErrorsState = {};
 
@@ -45,16 +46,20 @@ export const validationForm = (product: NewProduct): ErrorsState => {
   return errors;
 };
 
-const isValidUrl = (url: string): boolean => {
-  try {
-    const newUrl = new URL(url);
-    return newUrl.protocol === 'http:' || newUrl.protocol === 'https:';
-  } catch {
-    return false;
+// Auth Validations
+export const validateUsername = (username: string): string => {
+  if (!username.trim()) {
+    return 'Username is required';
   }
+  if (username.length < 3) {
+    return 'Username must be at least 3 characters';
+  }
+  if (username.length > 20) {
+    return 'Username must be less than 20 characters';
+  }
+  return '';
 };
 
-// Additional validation utilities
 export const validateEmail = (email: string): string => {
   if (!email.trim()) {
     return 'Email is required';
@@ -77,6 +82,11 @@ export const validatePassword = (password: string): string => {
     return 'Password must be at least 6 characters';
   }
   
+  // Optional: Add more password strength rules
+  if (!/(?=.*[a-z])(?=.*[A-Z])/.test(password)) {
+    return 'Password should contain both uppercase and lowercase letters';
+  }
+  
   return '';
 };
 
@@ -85,10 +95,66 @@ export const validatePhone = (phone: string): string => {
     return 'Phone number is required';
   }
   
-  const phoneRegex = /^\+?[\d\s-()]{10,}$/;
-  if (!phoneRegex.test(phone)) {
-    return 'Please enter a valid phone number';
+  // Remove all non-digit characters for validation
+  const cleanPhone = phone.replace(/\D/g, '');
+  
+  if (cleanPhone.length < 10) {
+    return 'Phone number must be at least 10 digits';
+  }
+  
+  if (cleanPhone.length > 15) {
+    return 'Phone number is too long';
   }
   
   return '';
+};
+
+// Profile Validations
+export const validateFullName = (name: string): string => {
+  if (!name.trim()) {
+    return 'Full name is required';
+  }
+  
+  if (name.trim().length < 2) {
+    return 'Full name must be at least 2 characters';
+  }
+  
+  if (name.trim().length > 50) {
+    return 'Full name must be less than 50 characters';
+  }
+  
+  return '';
+};
+
+export const validateAddress = (address: string): string => {
+  if (!address.trim()) {
+    return 'Address is required';
+  }
+  
+  if (address.trim().length < 10) {
+    return 'Address must be at least 10 characters';
+  }
+  
+  return '';
+};
+
+// Utility Functions
+const isValidUrl = (url: string): boolean => {
+  try {
+    const newUrl = new URL(url);
+    return newUrl.protocol === 'http:' || newUrl.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+// Export all validations as a single object for easier imports
+export const Validations = {
+  product: validationForm,
+  username: validateUsername,
+  email: validateEmail,
+  password: validatePassword,
+  phone: validatePhone,
+  fullName: validateFullName,
+  address: validateAddress,
 };
