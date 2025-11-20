@@ -49,10 +49,9 @@ const TopTabsNavigator = () => {
       <Tab.Screen name="Food" component={FoodScreen} />
       <Tab.Screen name="Automotive" component={AutomotiveScreen} />
       <Tab.Screen name="Entertainment" component={EntertainmentScreen} />
-      <Tab.Screen 
-        name="Baby" 
-        component={AuthGuard(BabyScreen)}
-      />
+      <Tab.Screen name="Baby">
+        {() => <AuthGuard><BabyScreen /></AuthGuard>}
+      </Tab.Screen>
     </Tab.Navigator>
   );
 };

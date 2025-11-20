@@ -2,12 +2,12 @@ import React, { useContext } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { AuthContext } from '../context/AuthContext';
+import { ReactNode } from 'react';
 
-const AuthGuard = (WrappedComponent: React.ComponentType) => {
-  return (props: any) => {
+const AuthGuard = ({ children }: { children: ReactNode }) => {
     const navigation = useNavigation();
     const { isAuthenticated } = useContext(AuthContext);
-    
+
     const handleLoginRedirect = () => {
       navigation.navigate('Login' as never);
     };
@@ -29,8 +29,7 @@ const AuthGuard = (WrappedComponent: React.ComponentType) => {
       );
     }
 
-    return <WrappedComponent {...props} />;
-  };
+    return <>{children}</>;
 };
 
 const styles = StyleSheet.create({

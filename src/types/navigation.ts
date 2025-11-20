@@ -16,7 +16,7 @@ export type RootDrawerParamList = {
   CategoriesWithBottomTabs: undefined;
   Cart: undefined;
   Analytics: undefined;
-  Profile: undefined;
+  Profile: { userId?: string };
   Settings: undefined;
   CategoryList: undefined;
   Login: undefined;

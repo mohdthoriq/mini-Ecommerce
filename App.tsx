@@ -32,9 +32,8 @@
 
 
 
-// App.tsx
-import React, { useEffect, useState } from 'react';
-import { StatusBar } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { StatusBar, LogBox } from 'react-native';
 import { AuthProvider } from './src/context/AuthContext';
 import { SwipeProvider } from './src/context/SwipeContext';
 import AnalyticsNavigationContainer from './src/routes/AnalyticsNavigationContainer';
@@ -43,32 +42,60 @@ import { CartProvider } from './src/context/CartContext';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { InternetProvider } from './src/context/InternetContext';
 import InternetStatusHandler from './src/components/InternetStatusHandler';
-import { setupAndStoreApiKey } from './src/services/api/apiClient'; // Import dari file yang sama
+import { setupAndStoreApiKey } from './src/services/api/apiClient';
+import { LinkingOptions, NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
+import { RootStackParamList } from './src/types/navigation';
+import { Linking } from 'react-native';
+import { linkingConfig } from './src/config/linkingConfig';
+import deepLinkingHandler from './src/utils/deepLinkingHandler';
+import { RootDrawerParamList } from './src/types/navigation';
+
+
+// Ignore specific warnings jika diperlukan
+LogBox.ignoreLogs(['Some warning message']);
 
 const App = () => {
   const [appReady, setAppReady] = useState(false);
+  const navigationRef = useRef<NavigationContainerRef<any>>(null);
 
-  // Setup API Key saat aplikasi pertama kali dijalankan
+  // Setup API Key dan Deep Linking saat aplikasi pertama kali dijalankan
   useEffect(() => {
     const initializeApp = async () => {
       try {
         console.log('🚀 Initializing application...');
-        
+
         // Setup API Key di Keychain
         await setupAndStoreApiKey();
-        
+
+        // Initialize deep linking handler
+        await deepLinkingHandler.initialize();
+
         console.log('✅ Application initialization completed');
         setAppReady(true);
-        
+
       } catch (error) {
         console.error('❌ Application initialization failed:', error);
-        // Tetap lanjut meski ada error, API mungkin tetap work tanpa key
         setAppReady(true);
       }
     };
 
     initializeApp();
   }, []);
+
+  // Handle deep link events untuk warm start
+  useEffect(() => {
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      console.log("🔥 Deep link received:", url);
+      deepLinkingHandler.handleDeepLink(url);
+    });
+
+    return () => subscription.remove();
+  }, []);
+
+  // Custom linking configuration
+  const linking: LinkingOptions<RootDrawerParamList> = {
+    ...linkingConfig,
+  };
 
   // Tampilkan loading screen selama setup
   if (!appReady) {
@@ -86,15 +113,34 @@ const App = () => {
         <AuthProvider>
           <CartProvider>
             <SwipeProvider>
-              <AnalyticsNavigationContainer>
+              <NavigationContainer
+                ref={navigationRef}
+                linking={linking}
+                onReady={() => {
+                  console.log('🎯 NavigationContainer ready');
+                  // Set navigation ref setelah container ready
+                  deepLinkingHandler.setNavigationRef(navigationRef.current);
+                  // Process pending URLs
+                  setTimeout(() => {
+                    deepLinkingHandler.processPendingUrl();
+                  }, 1000);
+                }}
+                onStateChange={() => {
+                  // Update navigation ref jika diperlukan
+                  deepLinkingHandler.setNavigationRef(navigationRef.current);
+                }}
+                fallback={
+                  <StatusBar backgroundColor="#2e7d32" barStyle="light-content" />
+                }
+              >
                 <InternetStatusHandler>
-                  <StatusBar 
-                    backgroundColor="#2e7d32" 
-                    barStyle="light-content" 
+                  <StatusBar
+                    backgroundColor="#2e7d32"
+                    barStyle="light-content"
                   />
-                  <Navigation />
+                    <Navigation />
                 </InternetStatusHandler>
-              </AnalyticsNavigationContainer>
+              </NavigationContainer>
             </SwipeProvider>
           </CartProvider>
         </AuthProvider>
@@ -104,17 +150,3 @@ const App = () => {
 };
 
 export default App;
-
-
-// import React from 'react';
-// import BasicKeychain from './src/components/BasicKeyChain';
-
-// export default function App() {
-//   return (
-//     <>
-//       <BasicKeychain />
-//     </>
-//   )
-// }
-
-//
