@@ -18,6 +18,8 @@ import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 import { useInternet } from '../../context/InternetContext';
 import { useNetworkAwareAction } from '../../hooks/useNetworkAwareAction';
 import { cacheManager } from '../../utils/cachehelper';
+import WishlistButton from '../../routes/WishlistButton'; // ✅ Import WishlistButton
+import { useAuth } from '../../context/AuthContext'; // ✅ Import useAuth untuk cek login
 
 type ProductListScreenNavigationProp = DrawerNavigationProp<RootDrawerParamList, 'ProductList'>;
 
@@ -29,6 +31,7 @@ const ProductListScreen = () => {
   const navigation = useNavigation<ProductListScreenNavigationProp>();
   const { isInternetReachable } = useInternet();
   const { executeIfOnline } = useNetworkAwareAction();
+  const { isAuthenticated } = useAuth(); // ✅ Untuk cek status login
 
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
@@ -369,17 +372,28 @@ const ProductListScreen = () => {
     >
       <Image source={{ uri: item.image }} style={styles.productImage} />
 
-      {item.discount && item.discount > 0 && (
-        <View style={styles.discountBadge}>
-          <Text style={styles.discountText}>-{Math.round(item.discount)}%</Text>
-        </View>
-      )}
+      {/* ✅ WISHLIST BUTTON - Position Absolute di atas gambar */}
+      <View style={styles.wishlistButtonContainer}>
+        <WishlistButton 
+          product={item}
+          size={20}
+          style={styles.wishlistButton}
+        />
+      </View>
 
-      {item.isNew && (
-        <View style={styles.newBadge}>
-          <Text style={styles.newText}>NEW</Text>
-        </View>
-      )}
+      {/* Badge Container untuk NEW dan Discount */}
+      <View style={styles.badgeContainer}>
+        {item.isNew && (
+          <View style={[styles.badge, styles.newBadge]}>
+            <Text style={styles.badgeText}>NEW</Text>
+          </View>
+        )}
+        {item.discount && item.discount > 0 && (
+          <View style={[styles.badge, styles.discountBadge]}>
+            <Text style={styles.badgeText}>-{Math.round(item.discount)}%</Text>
+          </View>
+        )}
+      </View>
 
       <View style={styles.productInfo}>
         <Text style={styles.productTitle} numberOfLines={2}>
@@ -573,6 +587,7 @@ const ProductListScreen = () => {
           {filteredProducts.length} products found
           {!isInternetReachable && ' • Offline'}
           {usingCache && ' • Cache'}
+          {isAuthenticated && ' • Login'} {/* ✅ Tampilkan status login */}
         </Text>
       </View>
 
@@ -623,6 +638,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#9bf89bff',
     padding: 16,
   },
+  wishlistButtonContainer: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 10, // Pastikan di atas badge lainnya
+  },
+  wishlistButton: {
+    // Style tambahan untuk wishlist button di product card
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+  },
+
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -807,33 +833,28 @@ const styles = StyleSheet.create({
     height: 120,
     resizeMode: 'cover',
   },
-  discountBadge: {
+  badgeContainer: {
     position: 'absolute',
     top: 8,
     left: 8,
-    backgroundColor: '#ff4444',
+    gap: 6, // Jarak antar badge
+    alignItems: 'flex-start',
+  },
+  badge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
   },
-  discountText: {
+  badgeText: {
     color: '#ffffff',
     fontSize: 12,
     fontWeight: 'bold',
   },
-  newBadge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: '#4caf50',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+  discountBadge: {
+    backgroundColor: '#ff4444',
   },
-  newText: {
-    color: '#ffffff',
-    fontSize: 10,
-    fontWeight: 'bold',
+  newBadge: {
+    backgroundColor: '#4caf50',
   },
   productInfo: {
     padding: 12,

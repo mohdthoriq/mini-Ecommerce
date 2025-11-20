@@ -14,6 +14,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { HomeStackParamList } from '../../types';
 import { productApi } from '../../services/api/productApi';
 import { Product } from '../../types';
+import WishlistButton from '../../routes/WishlistButton';
 
 type NewScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList>;
 
@@ -75,6 +76,11 @@ const NewScreen = () => {
         style={styles.productImage} 
         resizeMode="cover" 
       />
+
+      <View style={styles.wishlistButtonContainer}>
+        <WishlistButton product={item} size={20} />
+      </View>
+
       <View style={styles.productInfo}>
         <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
         <Text style={styles.productPrice}>${item.price.toLocaleString()}</Text>
@@ -83,8 +89,10 @@ const NewScreen = () => {
           <Text style={styles.productRating}>⭐ {item.rating}</Text>
         )}
       </View>
-      <View style={styles.newBadge}>
-        <Text style={styles.newBadgeText}>NEW</Text>
+      <View style={styles.badgeContainer}>
+        <View style={[styles.badge, styles.newBadge]}>
+          <Text style={styles.badgeText}>NEW</Text>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -195,6 +203,12 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 8,
   },
+  wishlistButtonContainer: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 1,
+  },
   productInfo: {
     flex: 1,
     marginLeft: 12,
@@ -223,15 +237,20 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   newBadge: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
     backgroundColor: '#4caf50',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
   },
-  newBadgeText: {
+  badgeContainer: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    zIndex: 1,
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  badgeText: {
     color: '#ffffff',
     fontSize: 12,
     fontWeight: 'bold',

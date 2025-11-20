@@ -3,7 +3,7 @@ import { RootDrawerParamList } from '../types/navigation';
 import { Linking } from 'react-native';
 
 export const linkingConfig: LinkingOptions<RootDrawerParamList> = {
-  prefixes: ['ecommerceapp://', 'https://yourapp.com'],
+  prefixes: ['ecommerceapp://', 'https://ecommerceapp.com'],
   
   async getInitialURL() {
     const url = await Linking.getInitialURL();

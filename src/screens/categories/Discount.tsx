@@ -1,20 +1,21 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  FlatList, 
-  StyleSheet, 
-  TouchableOpacity, 
-  Image, 
-  RefreshControl, 
+import {
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
+  TouchableOpacity,
+  Image,
+  RefreshControl,
   Alert,
-  ActivityIndicator 
+  ActivityIndicator
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { HomeStackParamList } from '../../types';
 import { productApi } from '../../services/api/productApi';
 import { Product } from '../../types';
+import WishlistButton from '../../routes/WishlistButton';
 
 type DiscountScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList>;
 
@@ -31,13 +32,13 @@ const DiscountScreen = () => {
     try {
       setError(null);
       const allProducts = await productApi.getAllProducts();
-      
+
       // Filter produk yang memiliki diskon
       // Asumsi: produk diskon memiliki property discount > 0
-      const discountedProducts = allProducts.filter(product => 
+      const discountedProducts = allProducts.filter(product =>
         product.discount && product.discount > 0
       );
-      
+
       setDiscountProducts(discountedProducts);
     } catch (err) {
       setError('Failed to load discount products');
@@ -71,7 +72,7 @@ const DiscountScreen = () => {
     const [imageError, setImageError] = useState(false);
 
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.productCard}
         onPress={() => handleProductPress(item.id)}
       >
@@ -81,17 +82,21 @@ const DiscountScreen = () => {
             <Text style={styles.placeholderSubtext}>Sale</Text>
           </View>
         ) : (
-          <Image 
-            source={{ uri: item.image }} 
-            style={styles.productImage} 
+          <Image
+            source={{ uri: item.image }}
+            style={styles.productImage}
             resizeMode="cover"
             onError={() => setImageError(true)}
           />
         )}
-        
+
+        <View style={styles.wishlistButtonContainer}>
+          <WishlistButton product={item} size={20} />
+        </View>
+
         <View style={styles.productInfo}>
           <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
-          
+
           <View style={styles.priceContainer}>
             <Text style={styles.originalPrice}>
               ${item.price.toLocaleString()}
@@ -100,13 +105,13 @@ const DiscountScreen = () => {
               ${calculateDiscountedPrice(item.price, item.discount || 0).toLocaleString()}
             </Text>
           </View>
-          
+
           <View style={styles.discountBadge}>
             <Text style={styles.discountBadgeText}>{item.discount}% OFF</Text>
           </View>
-          
+
           <Text style={styles.productCategory}>{item.category}</Text>
-          
+
           {item.isNew && (
             <View style={styles.newBadge}>
               <Text style={styles.newBadgeText}>NEW</Text>
@@ -147,7 +152,7 @@ const DiscountScreen = () => {
       <Text style={styles.subtitle}>
         {discountProducts.length} limited time discounts available
       </Text>
-      
+
       {discountProducts.length === 0 && !loading ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyIcon}>🎯</Text>
@@ -226,6 +231,12 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 8,
+  },
+   wishlistButtonContainer: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 1,
   },
   placeholderContainer: {
     backgroundColor: '#f0f0f0',

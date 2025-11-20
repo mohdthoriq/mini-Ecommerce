@@ -14,6 +14,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { HomeStackParamList } from '../../types';
 import { productApi } from '../../services/api/productApi';
 import { Product } from '../../types';
+import WishlistButton from '../../routes/WishlistButton';
 
 type FoodScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList>;
 
@@ -28,7 +29,7 @@ export default function Food() {
     try {
       setError(null);
       const allProducts = await productApi.getAllProducts();
-      
+
       // Filter produk makanan
       const filteredProducts = allProducts.filter(product =>
         product.category === 'food' ||
@@ -39,7 +40,7 @@ export default function Food() {
         product.category.toLowerCase().includes('food') ||
         product.category.toLowerCase().includes('beverage')
       );
-      
+
       setFoodProducts(filteredProducts);
     } catch (err) {
       setError('Gagal memuat produk makanan');
@@ -68,7 +69,7 @@ export default function Food() {
     const [imageError, setImageError] = useState(false);
 
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.productCard}
         onPress={() => handleProductPress(item.id)}
       >
@@ -78,13 +79,16 @@ export default function Food() {
             <Text style={styles.placeholderSubtext}>No Image</Text>
           </View>
         ) : (
-          <Image 
-            source={{ uri: item.image }} 
-            style={styles.productImage} 
+          <Image
+            source={{ uri: item.image }}
+            style={styles.productImage}
             resizeMode="cover"
             onError={() => setImageError(true)}
           />
         )}
+        <View style={styles.wishlistButtonContainer}>
+          <WishlistButton product={item} size={20} />
+        </View>
         <View style={styles.productInfo}>
           <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
           <Text style={styles.productPrice}>${item.price.toLocaleString()}</Text>
@@ -129,7 +133,7 @@ export default function Food() {
       <Text style={styles.subtitle}>
         {foodProducts.length} produk makanan sehat & organik
       </Text>
-      
+
       <FlatList
         data={foodProducts}
         renderItem={({ item }) => <ProductItem item={item} />}
@@ -206,6 +210,12 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 8,
+  },
+  wishlistButtonContainer: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 1,
   },
   placeholderContainer: {
     backgroundColor: '#f0f0f0',

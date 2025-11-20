@@ -32,11 +32,10 @@
 
 
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { StatusBar, LogBox } from 'react-native';
 import { AuthProvider } from './src/context/AuthContext';
 import { SwipeProvider } from './src/context/SwipeContext';
-import AnalyticsNavigationContainer from './src/routes/AnalyticsNavigationContainer';
 import Navigation from './src/routes';
 import { CartProvider } from './src/context/CartContext';
 import ErrorBoundary from './src/components/ErrorBoundary';
@@ -44,12 +43,14 @@ import { InternetProvider } from './src/context/InternetContext';
 import InternetStatusHandler from './src/components/InternetStatusHandler';
 import { setupAndStoreApiKey } from './src/services/api/apiClient';
 import { LinkingOptions, NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
-import { RootStackParamList } from './src/types/navigation';
+import { RootDrawerParamList } from './src/types/navigation';
 import { Linking } from 'react-native';
 import { linkingConfig } from './src/config/linkingConfig';
 import deepLinkingHandler from './src/utils/deepLinkingHandler';
-import { RootDrawerParamList } from './src/types/navigation';
 
+// Components
+import DeepLinkHandler from './src/components/DeepLinkHandler';
+import AppLoading from './src/components/AppLoading';
 
 // Ignore specific warnings jika diperlukan
 LogBox.ignoreLogs(['Some warning message']);
@@ -57,6 +58,14 @@ LogBox.ignoreLogs(['Some warning message']);
 const App = () => {
   const [appReady, setAppReady] = useState(false);
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
+
+  // ✅ Handle warm start deep links
+  const handleWarmStart = useCallback((url: string | null) => {
+    if (url) {
+      console.log('🔥 Warm start URL received:', url);
+      deepLinkingHandler.handleDeepLink(url);
+    }
+  }, []);
 
   // Setup API Key dan Deep Linking saat aplikasi pertama kali dijalankan
   useEffect(() => {
@@ -85,26 +94,39 @@ const App = () => {
   // Handle deep link events untuk warm start
   useEffect(() => {
     const subscription = Linking.addEventListener('url', ({ url }) => {
-      console.log("🔥 Deep link received:", url);
-      deepLinkingHandler.handleDeepLink(url);
+      console.log("🔥 Deep link received (warm start):", url);
+      handleWarmStart(url);
     });
 
     return () => subscription.remove();
-  }, []);
+  }, [handleWarmStart]);
 
   // Custom linking configuration
   const linking: LinkingOptions<RootDrawerParamList> = {
+    // linkingConfig sudah berisi prefixes dan config, jadi kita hanya perlu
+    // menambahkan getInitialURL agar React Navigation menanganinya secara otomatis.
     ...linkingConfig,
   };
 
+  // ✅ Enhanced navigation container ready handler
+  const handleNavigationReady = useCallback(() => {
+    console.log('🎯 NavigationContainer ready');
+    
+    // Set navigation ref setelah container ready
+    deepLinkingHandler.setNavigationRef(navigationRef.current);
+
+    // React Navigation akan menangani initial URL secara otomatis.
+  }, []);
+
+  // ✅ Enhanced state change handler
+  const handleStateChange = useCallback(() => {
+    // Update navigation ref jika diperlukan
+    deepLinkingHandler.setNavigationRef(navigationRef.current);
+  }, []);
+
   // Tampilkan loading screen selama setup
   if (!appReady) {
-    return (
-      <ErrorBoundary>
-        <StatusBar backgroundColor="#2e7d32" barStyle="light-content" />
-        {/* Loading component */}
-      </ErrorBoundary>
-    );
+    return <AppLoading />;
   }
 
   return (
@@ -116,30 +138,19 @@ const App = () => {
               <NavigationContainer
                 ref={navigationRef}
                 linking={linking}
-                onReady={() => {
-                  console.log('🎯 NavigationContainer ready');
-                  // Set navigation ref setelah container ready
-                  deepLinkingHandler.setNavigationRef(navigationRef.current);
-                  // Process pending URLs
-                  setTimeout(() => {
-                    deepLinkingHandler.processPendingUrl();
-                  }, 1000);
-                }}
-                onStateChange={() => {
-                  // Update navigation ref jika diperlukan
-                  deepLinkingHandler.setNavigationRef(navigationRef.current);
-                }}
-                fallback={
-                  <StatusBar backgroundColor="#2e7d32" barStyle="light-content" />
-                }
+                onReady={handleNavigationReady}
+                onStateChange={handleStateChange}
+                fallback={<AppLoading />}
               >
-                <InternetStatusHandler>
-                  <StatusBar
-                    backgroundColor="#2e7d32"
-                    barStyle="light-content"
-                  />
+                <DeepLinkHandler>
+                  <InternetStatusHandler>
+                    <StatusBar
+                      backgroundColor="#2e7d32"
+                      barStyle="light-content"
+                    />
                     <Navigation />
-                </InternetStatusHandler>
+                  </InternetStatusHandler>
+                </DeepLinkHandler>
               </NavigationContainer>
             </SwipeProvider>
           </CartProvider>

@@ -7,6 +7,7 @@ import {
   Image,
 } from 'react-native';
 import { Product } from '../types';
+import WishlistButton from '../routes/WishlistButton';
 
 interface ProductCardProps {
   product: Product;
@@ -64,7 +65,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
             {product.category}
           </Text>
         </View>
-        
+
         <View style={styles.badgeContainer}>
           {product.isNew && (
             <View style={[styles.badge, styles.newBadge]}>
@@ -86,14 +87,17 @@ const ProductCard: React.FC<ProductCardProps> = ({
           resizeMode="cover"
         />
         {/* Overlay hijau di image */}
+        <View style={styles.wishlistContainer}>
+          <WishlistButton product={product} size={20} />
+        </View>
         <View style={styles.imageOverlay} />
       </View>
-      
+
       <View style={styles.content}>
         <Text style={styles.name} numberOfLines={2}>
           {product.name}
         </Text>
-        
+
         <View style={styles.priceContainer}>
           {product.discount ? (
             <>
@@ -110,11 +114,11 @@ const ProductCard: React.FC<ProductCardProps> = ({
             </Text>
           )}
         </View>
-        
+
         <Text style={styles.description} numberOfLines={2}>
           {product.description}
         </Text>
-        
+
         {/* Eco Features */}
         <View style={styles.ecoFeatures}>
           <View style={styles.ecoFeature}>
@@ -131,7 +135,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
           </View>
         </View>
       </View>
-      
+
       {/* Bottom accent hijau */}
       <View style={styles.bottomAccent} />
     </TouchableOpacity>
@@ -140,6 +144,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
+    position: 'relative',
+    backgroundColor: '#f0f7f0',
     borderRadius: 20,
     marginBottom: 16,
     shadowColor: '#2e7d32',
@@ -153,6 +159,16 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 2,
     borderColor: '#e8f5e9',
+  },
+  thumbnail: {
+    width: '100%',
+    height: 150,
+  },
+  wishlistContainer: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 1, // Pastikan tombol di atas gambar
   },
   cardHeader: {
     flexDirection: 'row',

@@ -17,6 +17,7 @@ import { RootDrawerParamList, Product, ApiProduct } from '../../types';
 import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 import  { useInternet }  from '../../context/InternetContext';
 import { cacheManager } from '../../utils/cacheHelper';
+import WishlistButton from '../../routes/WishlistButton';
 
 type ProductCategoryScreenNavigationProp = DrawerNavigationProp<RootDrawerParamList, 'ProductCategory'>;
 
@@ -257,18 +258,13 @@ const ProductCategoryScreen = () => {
     >
       <Image source={{ uri: item.image }} style={styles.productImage} />
 
-      {item.discount && item.discount > 0 && (
-        <View style={styles.discountBadge}>
-          <Text style={styles.discountText}>-{Math.round(item.discount)}%</Text>
-        </View>
-      )}
+      {/* --- TOMBOL WISHLIST --- */}
+      <View style={styles.wishlistButtonContainer}>
+        <WishlistButton product={item} size={20} />
+      </View>
 
-      {item.isNew && (
-        <View style={styles.newBadge}>
-          <Text style={styles.newText}>NEW</Text>
-        </View>
-      )}
-
+      {/* --- BADGE (NEW & DISCOUNT) --- */}
+      {/* (Logika badge bisa ditambahkan di sini jika perlu) */}
       <View style={styles.productInfo}>
         <Text style={styles.productTitle} numberOfLines={2}>
           {item.name}
@@ -580,6 +576,12 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     overflow: 'hidden',
     position: 'relative',
+  },
+  wishlistButtonContainer: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 1,
   },
   productImage: {
     width: '100%',

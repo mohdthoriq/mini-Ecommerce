@@ -7,14 +7,17 @@ import {
   TouchableOpacity,
   Image,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  RefreshControl
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { HomeStackParamList, Product } from '../../types';
 import { useCart } from '../../context/CartContext';
 import { productApi } from '../../services/api/productApi';
+import { productCacheService } from '../../services/product/productCacheService';
 import ResetStackButton from '../../components/ResetStackButton';
+import { fetchWithRetry } from '../../utils/fetchWithRetry'; 
 
 type ProductDetailScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList, 'ProductDetail'>;
 
@@ -22,6 +25,7 @@ type ProductDetailScreenNavigationProp = NativeStackNavigationProp<HomeStackPara
 const FALLBACK_PRODUCT: Product = {
   id: "fallback",
   name: "Produk Arsip",
+  title: "Produk Arsip",
   image: "https://dummyimage.com/300x300/cccccc/000000",
   price: 0,
   description: "Ini adalah versi arsip produk. Data terbaru tidak dapat dimuat.",
@@ -41,59 +45,151 @@ const ProductDetailScreen = () => {
   const [error, setError] = useState<string | null>(null);
   const [showFallback, setShowFallback] = useState(false);
   const [httpStatus, setHttpStatus] = useState<number | null>(null);
+  const [usingCache, setUsingCache] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [retryCount, setRetryCount] = useState(0); // ✅ Track retry attempts
 
   useEffect(() => {
     fetchProductDetail();
   }, [productId]);
 
-  const fetchProductDetail = async () => {
+  /**
+   * ✅ FETCH PRODUCT DETAIL DENGAN RETRY MECHANISM
+   */
+  const fetchProductDetail = async (isRefreshing: boolean = false) => {
     try {
-      setLoading(true);
+      if (!isRefreshing) {
+        setLoading(true);
+      }
       setError(null);
       setShowFallback(false);
       setHttpStatus(null);
+      setRetryCount(0); // Reset retry count
       
+      if (!isRefreshing) {
+        setUsingCache(false);
+      }
+
       console.log('🔄 Fetching product details for ID:', productId);
+
+      // ✅ JIKA SEDANG REFRESH, SKIP CACHE & FORCE API CALL
+      const cachedProduct = isRefreshing ? null : await productCacheService.getProductCache<Product>(productId);
       
-      const productData = await productApi.getProductById(productId);
+      if (cachedProduct && !isRefreshing) {
+        console.log('✅ Using cached product data');
+        setProduct(cachedProduct);
+        setUsingCache(true);
+        setLoading(false);
+        return;
+      }
+
+      // ✅ FETCH FROM API DENGAN RETRY MECHANISM
+      console.log(isRefreshing ? '🔄 Force refreshing from API...' : '🌐 Cache miss, fetching from API...');
+      
+      const productData = await fetchWithRetry(
+        async () => {
+          const result = await productApi.getProductById(productId);
+          setRetryCount(prev => prev + 1); // Track successful attempt
+          return result;
+        },
+        { 
+          maxRetry: 3, 
+          baseDelay: 1000,
+          retryOn5xx: true 
+        }
+      );
+      
+      // ✅ SAVE TO CACHE
+      await productCacheService.setProductCache(productId, productData);
+      
       setProduct(productData);
+      setUsingCache(false);
       
-      console.log('✅ Product details loaded:', productData);
+      console.log(isRefreshing ? '✅ Product data refreshed and cache updated' : '✅ Product details loaded from API and cached');
+      
     } catch (err: any) {
-      console.error('❌ Error fetching product:', err);
+      console.error('❌ Error fetching product after retries:', err);
       
-      // Deteksi status code error
       const status = err.response?.status;
       setHttpStatus(status);
+      setRetryCount(0); // Reset karena gagal
       
-      if (status === 404) {
-        console.warn('⚠️ Product not found (404) - Showing fallback data');
-      } else if (status === 500) {
-        console.error('💥 Server error (500) - Showing fallback data');
-      } else {
-        console.error('🚨 Other error:', err.message);
-      }
-      
-      setError(err.message || 'Failed to load product details');
-      
-      // Show fallback product untuk 404 atau 500 errors
-      if (status === 404 || status === 500) {
-        setShowFallback(true);
-        setProduct(FALLBACK_PRODUCT);
+      // ✅ JIKA REFRESH GAGAL, COBA PAKAI CACHE SEBAGAI FALLBACK
+      const cachedProduct = await productCacheService.getProductCache<Product>(productId);
+      if (cachedProduct) {
+        console.log('🔄 Using cached data as fallback after API error');
+        setProduct(cachedProduct);
+        setUsingCache(true);
+        setError(isRefreshing ? 'Refresh failed, using cached data' : 'Using cached data (offline mode)');
         
-        // Show toast message
-        Alert.alert(
-          'Info', 
-          'Gagal memuat data terbaru. Menampilkan versi arsip.',
-          [{ text: 'OK' }]
-        );
+        if (isRefreshing) {
+          Alert.alert(
+            'Refresh Failed', 
+            'Failed to refresh data. Using cached version instead.'
+          );
+        }
       } else {
-        // Untuk error lain, show alert biasa
-        Alert.alert('Error', 'Failed to load product details');
+        setError(err.message || 'Failed to load product details');
+        
+        if (status === 404 || status === 500) {
+          setShowFallback(true);
+          setProduct(FALLBACK_PRODUCT);
+          
+          if (isRefreshing) {
+            Alert.alert(
+              'Refresh Failed', 
+              'Gagal memuat data terbaru setelah beberapa percobaan. Menampilkan versi arsip.'
+            );
+          } else {
+            Alert.alert(
+              'Connection Issue', 
+              'Gagal memuat data produk setelah beberapa percobaan. Menampilkan versi arsip.'
+            );
+          }
+        } else if (isRefreshing) {
+          Alert.alert(
+            'Refresh Failed', 
+            'Failed to refresh product data after several attempts'
+          );
+        } else {
+          Alert.alert(
+            'Connection Error', 
+            'Failed to load product details. Please check your connection.'
+          );
+        }
       }
     } finally {
       setLoading(false);
+      if (isRefreshing) {
+        setRefreshing(false);
+      }
     }
+  };
+
+  /**
+   * ✅ PULL-TO-REFRESH HANDLER DENGAN RETRY
+   */
+  const onRefresh = () => {
+    console.log('🔄 Pull-to-refresh triggered');
+    setRefreshing(true);
+    fetchProductDetail(true);
+  };
+
+  /**
+   * ✅ MANUAL RETRY HANDLER
+   */
+  const handleManualRetry = () => {
+    console.log('🔄 Manual retry triggered');
+    fetchProductDetail(false);
+  };
+
+  /**
+   * CLEAR CACHE FOR THIS PRODUCT
+   */
+  const clearProductCache = async () => {
+    await productCacheService.clearProductCache(productId);
+    Alert.alert('Cache Cleared', 'Product cache has been cleared.');
+    setUsingCache(false);
   };
 
   const handleBackToDrawerHome = () => {
@@ -103,7 +199,6 @@ const ProductDetailScreen = () => {
   const handleAddToCart = () => {
     if (!product) return;
     
-    // Prevent adding fallback product to cart
     if (product.id === "fallback") {
       Alert.alert('Info', 'Produk arsip tidak dapat ditambahkan ke keranjang.');
       return;
@@ -116,7 +211,6 @@ const ProductDetailScreen = () => {
   const handleBuyNow = () => {
     if (!product) return;
     
-    // Prevent buying fallback product
     if (product.id === "fallback") {
       Alert.alert('Info', 'Produk arsip tidak dapat dibeli.');
       return;
@@ -125,39 +219,114 @@ const ProductDetailScreen = () => {
     addToCart(product, 1);
   };
 
-  if (loading) {
+  // ✅ HELPER FUNCTION UNTUK GET PRODUCT NAME
+  const getProductName = (product: Product): string => {
+    return product.title || product.name || 'Product Name Not Available';
+  };
+
+  // ✅ HELPER FUNCTION UNTUK GET PRODUCT IMAGE
+  const getProductImage = (product: Product): string => {
+    return product.image || product.thumbnail || FALLBACK_PRODUCT.image!;
+  };
+
+  if (loading && !refreshing) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#2e7d32" />
-        <Text style={styles.loadingText}>Loading product details...</Text>
+        <Text style={styles.loadingText}>
+          {usingCache ? 'Loading from cache...' : 'Loading product details...'}
+        </Text>
+        {retryCount > 0 && (
+          <Text style={styles.retryInfoText}>
+            Attempt {retryCount} of 4
+          </Text>
+        )}
       </View>
     );
   }
 
-  // Use fallback product if available, otherwise show error
   const displayProduct = showFallback ? product : product;
   
-  if ((error && !showFallback) || !displayProduct) {
+  if ((error && !showFallback && !usingCache) || !displayProduct) {
     return (
       <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>Failed to load product</Text>
-        <Text style={styles.errorSubText}>
-          {httpStatus ? `HTTP ${httpStatus}` : error}
+        <Text style={styles.errorTitle}>Failed to Load Product</Text>
+        <Text style={styles.errorText}>
+          {httpStatus ? `HTTP ${httpStatus} Error` : 'Network Error'}
         </Text>
-        <TouchableOpacity style={styles.retryButton} onPress={fetchProductDetail}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </TouchableOpacity>
+        <Text style={styles.errorDescription}>
+          {error || 'Unable to load product details after several retry attempts.'}
+        </Text>
+        
+        <View style={styles.errorActions}>
+          <TouchableOpacity 
+            style={[styles.retryButton, styles.primaryRetryButton]} 
+            onPress={handleManualRetry}
+          >
+            <Text style={styles.primaryRetryButtonText}>🔄 Try Again</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.retryButton} 
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.retryButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+        
+        {/* Debug info for developers */}
+        {__DEV__ && (
+          <View style={styles.debugInfo}>
+            <Text style={styles.debugText}>Product ID: {productId}</Text>
+            <Text style={styles.debugText}>HTTP Status: {httpStatus || 'N/A'}</Text>
+            <Text style={styles.debugText}>Error: {error}</Text>
+          </View>
+        )}
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView 
+      style={styles.container}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          colors={['#2e7d32']}
+          tintColor="#2e7d32"
+          title="Pull to refresh..."
+          titleColor="#666"
+        />
+      }
+      showsVerticalScrollIndicator={false}
+    >
+      {/* Cache Status Banner */}
+      {usingCache && (
+        <View style={styles.cacheBanner}>
+          <Text style={styles.cacheBannerText}>
+            💾 Using Cached Data
+          </Text>
+          <TouchableOpacity onPress={clearProductCache} style={styles.clearCacheButton}>
+            <Text style={styles.clearCacheText}>Clear Cache</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Retry Success Banner */}
+      {retryCount > 1 && !usingCache && (
+        <View style={styles.retrySuccessBanner}>
+          <Text style={styles.retrySuccessText}>
+            ✅ Loaded after {retryCount} attempts
+          </Text>
+        </View>
+      )}
+
       {/* Fallback Product Banner */}
       {showFallback && (
         <View style={styles.fallbackBanner}>
           <Text style={styles.fallbackBannerText}>
-            ⚠️ Menampilkan Versi Arsip
+            ⚠️ Showing Archived Version
           </Text>
         </View>
       )}
@@ -173,7 +342,7 @@ const ProductDetailScreen = () => {
 
       <View style={styles.imageContainer}>
         <Image
-          source={{ uri: displayProduct.image || displayProduct.thumbnail }}
+          source={{ uri: getProductImage(displayProduct) }}
           style={styles.productImage}
           resizeMode="cover"
         />
@@ -190,7 +359,17 @@ const ProductDetailScreen = () => {
           )}
           {showFallback && (
             <View style={[styles.badge, styles.fallbackBadge]}>
-              <Text style={styles.badgeText}>ARSIP</Text>
+              <Text style={styles.badgeText}>ARCHIVE</Text>
+            </View>
+          )}
+          {usingCache && (
+            <View style={[styles.badge, styles.cacheBadge]}>
+              <Text style={styles.badgeText}>CACHE</Text>
+            </View>
+          )}
+          {retryCount > 1 && (
+            <View style={[styles.badge, styles.retryBadge]}>
+              <Text style={styles.badgeText}>RETRY {retryCount}</Text>
             </View>
           )}
         </View>
@@ -198,10 +377,11 @@ const ProductDetailScreen = () => {
 
       <View style={styles.content}>
         <Text style={styles.category}>{displayProduct.category?.toUpperCase() || 'PRODUCT'}</Text>
-        <Text style={styles.name}>{displayProduct.name}</Text>
+        
+        <Text style={styles.name}>{getProductName(displayProduct)}</Text>
         
         <Text style={styles.price}>
-          {displayProduct.price > 0 ? `$${displayProduct.price.toLocaleString()}` : 'Harga tidak tersedia'}
+          {displayProduct.price > 0 ? `$${displayProduct.price.toLocaleString()}` : 'Price not available'}
         </Text>
         
         <View style={styles.stockContainer}>
@@ -211,6 +391,11 @@ const ProductDetailScreen = () => {
           ]}>
             {(displayProduct.stock ?? 0) > 0 ? 'In Stock' : 'Out of Stock'}
           </Text>
+          {usingCache && (
+            <Text style={styles.cacheHint}>
+              💡 Pull down to refresh data
+            </Text>
+          )}
         </View>
 
         <Text style={styles.description}>{displayProduct.description}</Text>
@@ -226,7 +411,7 @@ const ProductDetailScreen = () => {
             disabled={(displayProduct.stock ?? 0) === 0 || showFallback}
           >
             <Text style={styles.cartButtonText}>
-              {showFallback ? 'Produk Arsip' : 
+              {showFallback ? 'Archived Product' : 
                (displayProduct.stock ?? 0) === 0 ? 'Out of Stock' : 'Add to Cart'}
             </Text>
           </TouchableOpacity>
@@ -240,7 +425,7 @@ const ProductDetailScreen = () => {
             disabled={(displayProduct.stock ?? 0) === 0 || showFallback}
           >
             <Text style={styles.buyButtonText}>
-              {showFallback ? 'Tidak Tersedia' : 
+              {showFallback ? 'Not Available' : 
                (displayProduct.stock ?? 0) === 0 ? 'Out of Stock' : 'Buy Now'}
             </Text>
           </TouchableOpacity>
@@ -257,6 +442,16 @@ const ProductDetailScreen = () => {
           
           <ResetStackButton />
         </View>
+
+        {/* Refresh Hint */}
+        <View style={styles.refreshHintContainer}>
+          <Text style={styles.refreshHintText}>
+            💡 Pull down from top to refresh product data
+          </Text>
+          <Text style={styles.retryHintText}>
+            🔄 Automatic retry on network failures
+          </Text>
+        </View>
       </View>
     </ScrollView>
   );
@@ -272,11 +467,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#f8f9fa',
+    padding: 20,
   },
   loadingText: {
     marginTop: 16,
     fontSize: 16,
     color: '#666',
+  },
+  retryInfoText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#2e7d32',
+    fontWeight: '500',
   },
   errorContainer: {
     flex: 1,
@@ -285,28 +487,102 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f9fa',
     padding: 20,
   },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#ff5722',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
   errorText: {
     fontSize: 16,
     color: '#ff5722',
     marginBottom: 8,
     textAlign: 'center',
+    fontWeight: '600',
   },
-  errorSubText: {
+  errorDescription: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 16,
+    marginBottom: 24,
     textAlign: 'center',
+    lineHeight: 20,
+  },
+  errorActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
   },
   retryButton: {
-    backgroundColor: '#2e7d32',
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2e7d32',
   },
-  retryButtonText: {
+  primaryRetryButton: {
+    backgroundColor: '#2e7d32',
+  },
+  primaryRetryButtonText: {
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  retryButtonText: {
+    color: '#2e7d32',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  debugInfo: {
+    marginTop: 20,
+    padding: 12,
+    backgroundColor: '#fff3cd',
+    borderRadius: 8,
+    width: '100%',
+  },
+  debugText: {
+    fontSize: 12,
+    color: '#856404',
+    fontFamily: 'monospace',
+  },
+  cacheBanner: {
+    backgroundColor: '#ff9800',
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    justifyContent: 'space-between',
+  },
+  cacheBannerText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  retrySuccessBanner: {
+    backgroundColor: '#4caf50',
+    padding: 12,
+    alignItems: 'center',
+  },
+  retrySuccessText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  clearCacheButton: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  clearCacheText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  cacheBadge: {
+    backgroundColor: '#ff9800',
+  },
+  retryBadge: {
+    backgroundColor: '#2196f3',
   },
   fallbackBanner: {
     backgroundColor: '#ff9800',
@@ -323,11 +599,6 @@ const styles = StyleSheet.create({
     padding: 8,
     alignItems: 'center',
   },
-  debugText: {
-    fontSize: 12,
-    color: '#1976d2',
-    fontFamily: 'monospace',
-  },
   imageContainer: {
     position: 'relative',
     height: 300,
@@ -343,6 +614,7 @@ const styles = StyleSheet.create({
     left: 16,
     flexDirection: 'row',
     gap: 8,
+    flexWrap: 'wrap',
   },
   badge: {
     paddingHorizontal: 12,
@@ -397,6 +669,12 @@ const styles = StyleSheet.create({
   outOfStock: {
     color: '#ff5722',
   },
+  cacheHint: {
+    fontSize: 12,
+    color: '#666',
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
   description: {
     fontSize: 16,
     lineHeight: 24,
@@ -406,7 +684,7 @@ const styles = StyleSheet.create({
   buttonGroup: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   cartButton: {
     flex: 1,
@@ -439,6 +717,7 @@ const styles = StyleSheet.create({
   },
   navigationButtons: {
     gap: 12,
+    marginBottom: 20,
   },
   navButton: {
     backgroundColor: '#4caf50',
@@ -450,6 +729,27 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  refreshHintContainer: {
+    backgroundColor: '#e8f5e9',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#c8e6c9',
+  },
+  refreshHintText: {
+    fontSize: 14,
+    color: '#2e7d32',
+    textAlign: 'center',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  retryHintText: {
+    fontSize: 12,
+    color: '#2e7d32',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });
 

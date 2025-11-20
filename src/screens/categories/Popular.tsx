@@ -15,7 +15,8 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { HomeStackParamList, Product } from '../../types'; // ✅ Path yang benar
 import { useDynamicHeader } from '../../hooks/useDynamicHeader';
-import { productApi } from '../../services/api/productApi'; // ✅ Path yang benar
+import { productApi } from '../../services/api/productApi';
+import WishlistButton from '../../routes/WishlistButton';
 
 type PopularScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList>;
 
@@ -73,18 +74,23 @@ const PopularScreen = () => {
       onPress={() => handleProductPress(item.id)}
     >
       <Image source={{ uri: item.image }} style={styles.productImage} />
-      
-      {item.discount && item.discount > 0 && (
-        <View style={styles.discountBadge}>
-          <Text style={styles.discountText}>-{item.discount}%</Text>
-        </View>
-      )}
-      
-      {item.isNew && (
-        <View style={styles.newBadge}>
-          <Text style={styles.newBadgeText}>NEW</Text>
-        </View>
-      )}
+
+      <View style={styles.wishlistButtonContainer}>
+        <WishlistButton product={item} size={20} />
+      </View>
+
+      <View style={styles.badgeContainer}>
+        {item.isNew && (
+          <View style={[styles.badge, styles.newBadge]}>
+            <Text style={styles.badgeText}>NEW</Text>
+          </View>
+        )}
+        {item.discount && item.discount > 0 && (
+          <View style={[styles.badge, styles.discountBadge]}>
+            <Text style={styles.badgeText}>-{Math.round(item.discount)}% OFF</Text>
+          </View>
+        )}
+      </View>
 
       <View style={styles.productInfo}>
         <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
@@ -207,6 +213,33 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 8,
   },
+  wishlistButtonContainer: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 1,
+  },
+  badgeContainer: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    gap: 6,
+    alignItems: 'flex-start',
+    zIndex: 1,
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  badgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  newBadge: {
+    backgroundColor: '#4caf50',
+  },
   productInfo: {
     flex: 1,
     marginLeft: 12,
@@ -251,34 +284,7 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   discountBadge: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
     backgroundColor: '#ff4444',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    zIndex: 1,
-  },
-  discountText: {
-    color: '#ffffff',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  newBadge: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    backgroundColor: '#4caf50',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    zIndex: 1,
-  },
-  newBadgeText: {
-    color: '#ffffff',
-    fontSize: 10,
-    fontWeight: 'bold',
   },
   emptyContainer: {
     alignItems: 'center',

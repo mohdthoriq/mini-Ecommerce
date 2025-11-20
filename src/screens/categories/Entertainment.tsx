@@ -16,6 +16,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { HomeStackParamList, Product } from '../../types';
 import { productApi } from '../../services/api/productApi';
 import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
+import WishlistButton from '../../routes/WishlistButton';
+
 
 export default function Entertainment() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
@@ -151,6 +153,10 @@ export default function Entertainment() {
         style={styles.productImage}
         resizeMode="cover"
       />
+
+      <View style={styles.wishlistButtonContainer}>
+        <WishlistButton product={item} size={20} />
+      </View>
       
       <View style={styles.productInfo}>
         <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
@@ -402,6 +408,12 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 8,
+  },
+  wishlistButtonContainer: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 1,
   },
   productInfo: {
     flex: 1,

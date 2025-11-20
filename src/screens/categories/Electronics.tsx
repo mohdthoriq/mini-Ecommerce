@@ -1,19 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  View, 
-  Text, 
-  FlatList, 
-  StyleSheet, 
-  TouchableOpacity, 
-  Image, 
+import {
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
+  TouchableOpacity,
+  Image,
   ActivityIndicator,
-  RefreshControl 
+  RefreshControl
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { HomeStackParamList } from '../../types';
 import { productApi } from '../../services/api/productApi';
 import { Product } from '../../types';
+import WishlistButton from '../../routes/WishlistButton';
 
 type ElectronicsScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList>;
 
@@ -59,7 +60,7 @@ const ElectronicsScreen = () => {
 
     } catch (err) {
       console.error('Error in fetchElectronicsProducts:', err);
-      
+
       // Fallback: coba ambil semua produk dan filter
       try {
         console.log('Trying fallback method...');
@@ -93,7 +94,7 @@ const ElectronicsScreen = () => {
             description.includes('digital')
           );
         });
-        
+
         setElectronicsProducts(filteredProducts);
         console.log(`Fallback found ${filteredProducts.length} products`);
       } catch (fallbackError) {
@@ -165,7 +166,7 @@ const ElectronicsScreen = () => {
     const [imageError, setImageError] = useState(false);
 
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.productCard}
         onPress={() => handleProductPress(item.id)}
       >
@@ -175,16 +176,19 @@ const ElectronicsScreen = () => {
             <Text style={styles.placeholderSubtext}>Tech</Text>
           </View>
         ) : (
-          <Image 
-            source={{ uri: item.image }} 
-            style={styles.productImage} 
+          <Image
+            source={{ uri: item.image }}
+            style={styles.productImage}
             resizeMode="cover"
             onError={() => setImageError(true)}
           />
         )}
+        <View style={styles.wishlistButtonContainer}>
+          <WishlistButton product={item} size={20} />
+        </View>
         <View style={styles.productInfo}>
           <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
-          
+
           {/* Harga dengan diskon */}
           {item.discount && item.discount > 0 ? (
             <View style={styles.priceContainer}>
@@ -198,21 +202,21 @@ const ElectronicsScreen = () => {
           ) : (
             <Text style={styles.productPrice}>${item.price.toLocaleString()}</Text>
           )}
-          
+
           <Text style={styles.productCategory}>{item.category}</Text>
-          
-          <View style={styles.badgeContainer}>
+
+          <View style={styles.badgeContainerLeft}>
             {/* Badge untuk produk baru */}
             {item.isNew && (
-              <View style={styles.newBadge}>
-                <Text style={styles.newBadgeText}>NEW</Text>
+              <View style={[styles.badge, styles.newBadge]}>
+                <Text style={styles.badgeText}>NEW</Text>
               </View>
             )}
-            
+
             {/* Badge untuk produk diskon */}
             {item.discount && item.discount > 0 && (
-              <View style={styles.discountBadge}>
-                <Text style={styles.discountBadgeText}>{Math.round(item.discount)}% OFF</Text>
+              <View style={[styles.badge, styles.discountBadge]}>
+                <Text style={styles.badgeText}>{Math.round(item.discount)}% OFF</Text>
               </View>
             )}
           </View>
@@ -250,12 +254,12 @@ const ElectronicsScreen = () => {
     <View style={styles.container}>
       <Text style={styles.title}>📱 Electronics</Text>
       <Text style={styles.subtitle}>
-        {electronicsProducts.length > 0 
+        {electronicsProducts.length > 0
           ? `${electronicsProducts.length} smart gadgets available`
           : 'Searching for electronics products...'
         }
       </Text>
-      
+
       <FlatList
         data={electronicsProducts}
         renderItem={({ item }) => <ProductItem item={item} />}
@@ -342,6 +346,12 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 8,
   },
+   wishlistButtonContainer: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 1,
+  },
   placeholderContainer: {
     backgroundColor: '#f0f0f0',
     justifyContent: 'center',
@@ -397,32 +407,26 @@ const styles = StyleSheet.create({
     textTransform: 'capitalize',
     marginBottom: 6,
   },
-  badgeContainer: {
+  badgeContainerLeft: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
   },
-  newBadge: {
-    backgroundColor: '#4caf50',
+  badge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
   },
-  newBadgeText: {
+  badgeText: {
     color: '#ffffff',
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  newBadge: {
+    backgroundColor: '#4caf50',
   },
   discountBadge: {
     backgroundColor: '#ff5722',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  discountBadgeText: {
-    color: '#ffffff',
-    fontSize: 10,
-    fontWeight: 'bold',
   },
   emptyContainer: {
     flex: 1,

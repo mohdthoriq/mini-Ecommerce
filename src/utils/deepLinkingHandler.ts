@@ -1,15 +1,18 @@
 import { Linking, EmitterSubscription, Platform, Alert, AppState } from 'react-native';
 import { NavigationContainerRef } from '@react-navigation/native';
 import { NativeModules } from 'react-native';
+import {
+  DeepLinkParams,
+  ParsedDeepLink,
+  DeepLinkAction,
+  DeepLinkResult,
+  AddToCartDeepLink,
+  ViewProductDeepLink,
+  OpenCartDeepLink
+} from '../types/deepLinking';
 
-type DeepLinkParams = Record<string, string>;
-
-interface ParsedDeepLink {
-  route: string;
-  params: DeepLinkParams;
-  pathSegments: string[];
-  originalUrl: string;
-}
+// ✅ Import cart context atau service untuk handle add to cart
+import { productApi } from '../services/api/productApi';
 
 interface TroubleshootingState {
   lastProcessedUrl: string | null;
@@ -18,13 +21,28 @@ interface TroubleshootingState {
   isColdStart: boolean;
 }
 
+// ✅ Callback interface untuk external handlers
+export interface DeepLinkCallbacks {
+  onAddToCart?: (productId: string) => Promise<void>;
+  onViewProduct?: (productId: string) => void;
+  onOpenCart?: () => void;
+  onAuthRequired?: (targetRoute: string, params?: any) => void;
+  onInvalidParam?: (error: string) => void;
+}
+
+// ✅ Interface untuk pending deep link dengan auth gate
+interface PendingDeepLink {
+  url: string;
+  parsedLink: ParsedDeepLink;
+  targetAction: DeepLinkAction;
+  timestamp: number;
+}
+
 class DeepLinkingHandler {
-  handleProfileNavigation(pathSegments: string[], params: DeepLinkParams) {
-    throw new Error('Method not implemented.');
-  }
   private navigationRef: NavigationContainerRef<any> | null = null;
   private isReady: boolean = false;
   private pendingUrl: string | null = null;
+  private pendingAuthDeepLink: PendingDeepLink | null = null;
   private subscriptions: { remove: () => void }[] = [];
   private troubleshootingState: TroubleshootingState = {
     lastProcessedUrl: null,
@@ -32,6 +50,10 @@ class DeepLinkingHandler {
     appState: 'active',
     isColdStart: true
   };
+
+  // ✅ External callbacks untuk cart operations dan auth
+  private callbacks: DeepLinkCallbacks = {};
+  private isUserLoggedIn: boolean = false;
 
   setNavigationRef = (ref: NavigationContainerRef<any> | null): void => {
     this.navigationRef = ref;
@@ -41,10 +63,27 @@ class DeepLinkingHandler {
     }
   };
 
+  // ✅ Set external callbacks
+  setCallbacks = (callbacks: DeepLinkCallbacks): void => {
+    this.callbacks = callbacks;
+    console.log('✅ Deep link callbacks set');
+  };
+
+  // ✅ Set auth state untuk auth gate
+  setAuthState = (isLoggedIn: boolean): void => {
+    this.isUserLoggedIn = isLoggedIn;
+    console.log(`🔐 Auth state updated: ${isLoggedIn ? 'Logged In' : 'Logged Out'}`);
+
+    // Jika user baru login dan ada pending auth deep link, process sekarang
+    if (isLoggedIn && this.pendingAuthDeepLink) {
+      this.processPendingAuthDeepLink();
+    }
+  };
+
   initialize = async (): Promise<string | null> => {
     try {
       console.log('🚀 Initializing Deep Linking Handler...');
-      
+
       let initialUrl: string | null = null;
 
       // Setup app state listener
@@ -73,12 +112,12 @@ class DeepLinkingHandler {
       }
 
       // Check if app can open our scheme
-      const canOpen = await Linking.canOpenURL('ecommerceapp://test');
-      console.log(`🔗 Can open ecommerceapp:// scheme: ${canOpen}`);
+      const canOpen = await Linking.canOpenURL('miniecom://test');
+      console.log(`🔗 Can open miniecom:// scheme: ${canOpen}`);
 
       this.isReady = true;
       this.troubleshootingState.isColdStart = false;
-      
+
       console.log('✅ DeepLinkingHandler initialized successfully');
       this.logTroubleshootingState();
 
@@ -90,12 +129,246 @@ class DeepLinkingHandler {
     }
   };
 
+  // ✅ ENHANCED DEEP LINK PARSER DENGAN VALIDASI
+  parseDeepLinkUrl = (url: string): DeepLinkResult => {
+    try {
+      console.log('🔗 Parsing deep link URL:', url);
+
+      // Basic validation
+      if (!url || typeof url !== 'string') {
+        return {
+          success: false,
+          action: { type: 'fallback', reason: 'Invalid URL format' },
+          error: 'Invalid URL format',
+        };
+      }
+
+      // Parse URL
+      const parsedUrl = new URL(url);
+      const host = parsedUrl.host;
+      const pathSegments = parsedUrl.pathname.split('/').filter(segment => segment.length > 0);
+
+      console.log('🔗 URL parsed - Host:', host, 'Path:', pathSegments);
+
+      // Handle different actions
+      if (pathSegments.length === 0) {
+        // miniecom:// - fallback ke home
+        return {
+          success: true,
+          action: { type: 'fallback' }
+        };
+      }
+
+      const action = pathSegments[0];
+      const param = pathSegments[1];
+
+      switch (action) {
+        case 'product':
+          if (!param) {
+            return {
+              success: false,
+              action: { type: 'fallback' },
+              error: 'Product ID is required for product action'
+            };
+          }
+
+          // ✅ VALIDASI: Product ID harus angka
+          if (!this.isValidProductId(param)) {
+            return {
+              success: false,
+              action: { type: 'fallback' },
+              error: 'Invalid product ID format - must be numeric'
+            };
+          }
+
+          return {
+            success: true,
+            action: {
+              type: 'view-product',
+              productId: param
+            } as ViewProductDeepLink
+          };
+
+        case 'add-to-cart':
+          if (!param) {
+            return {
+              success: false,
+              action: { type: 'fallback' },
+              error: 'Product ID is required for add-to-cart action'
+            };
+          }
+
+          // ✅ VALIDASI: Product ID harus angka
+          if (!this.isValidProductId(param)) {
+            return {
+              success: false,
+              action: { type: 'fallback' },
+              error: 'Invalid product ID format - must be numeric'
+            };
+          }
+
+          return {
+            success: true,
+            action: {
+              type: 'add-to-cart',
+              productId: param
+            } as AddToCartDeepLink
+          };
+
+        case 'home':
+          return {
+            success: true,
+            action: { type: 'fallback' }
+          };
+
+        case 'cart':
+          return {
+            success: true,
+            action: { type: 'open-cart' } as OpenCartDeepLink
+          };
+
+        default:
+          return {
+            success: false,
+            action: { type: 'fallback' },
+            error: `Unknown action: ${action}`
+          };
+      }
+    } catch (error) {
+      console.error('❌ Error parsing deep link:', error);
+      return {
+        success: false,
+        action: { type: 'fallback' },
+        error: 'Failed to parse deep link URL'
+      };
+    }
+  };
+
+  // ✅ VALIDATE PRODUCT ID - HARUS ANGKA
+  private isValidProductId = (productId: string): boolean => {
+    return /^[0-9]+$/.test(productId) && productId.length > 0 && productId.length <= 10;
+  };
+
+  // ✅ VALIDASI TARGET DENGAN AUTH CHECK
+  validateTarget = (params: any, actionType: string): { isValid: boolean; requiresAuth: boolean } => {
+    // Validasi parameter
+    if (actionType === 'view-product' || actionType === 'add-to-cart') {
+      if (!params.productId || !this.isValidProductId(params.productId)) {
+        return { isValid: false, requiresAuth: false };
+      }
+    }
+
+    // Tentukan apakah action memerlukan auth
+    const requiresAuth = actionType === 'add-to-cart'; // Contoh: add-to-cart butuh login
+
+    return { isValid: true, requiresAuth };
+  };
+
+  // ✅ HANDLE DEEP LINK NAVIGATION DENGAN AUTH GATE
+  handleDeepLinkNavigation = async (
+    navigation: any,
+    parsedLink: ParsedDeepLink,
+    isLoggedIn: boolean
+  ): Promise<void> => {
+    console.log('🎯 Handling deep link navigation with auth gate:', {
+      parsedLink,
+      isLoggedIn
+    });
+
+    const { action } = parsedLink;
+
+    // Validasi target
+    const validation = this.validateTarget(action, action.type);
+
+    if (!validation.isValid) {
+      // ✅ FALLBACK NAVIGATION: Invalid parameter
+      console.log('❌ Invalid parameters, fallback to home');
+      this.navigateToHome();
+      this.showFallbackAlert(
+        'Tautan Tidak Valid',
+        'Tautan tidak valid, dialihkan ke beranda'
+      );
+
+      // Panggil callback untuk invalid param
+      if (this.callbacks.onInvalidParam) {
+        this.callbacks.onInvalidParam('Invalid product ID format');
+      }
+      return;
+    }
+
+    // ✅ AUTH GATE: Check jika perlu login tapi belum login
+    if (validation.requiresAuth && !isLoggedIn) {
+      console.log('🔐 Auth required but user not logged in, saving pending deep link');
+
+      // Simpan sebagai pending deep link
+      this.pendingAuthDeepLink = {
+        url: `miniecom://${action.type}/${(action as any).productId || ''}`,
+        parsedLink,
+        targetAction: action,
+        timestamp: Date.now()
+      };
+
+      // Panggil callback auth required
+      if (this.callbacks.onAuthRequired) {
+        this.callbacks.onAuthRequired(action.type, (action as any).productId);
+      } else {
+        // Fallback: Navigate ke login
+        this.navigateToLogin();
+      }
+      return;
+    }
+
+    // ✅ EXECUTE NAVIGATION: Valid dan auth terpenuhi
+    this.executeNavigation(action);
+  };
+
+  // ✅ PROCESS PENDING AUTH DEEP LINK SETELAH LOGIN
+  private processPendingAuthDeepLink = (): void => {
+    if (!this.pendingAuthDeepLink || !this.navigationRef) {
+      return;
+    }
+
+    console.log('🔄 Processing pending auth deep link:', this.pendingAuthDeepLink);
+
+    // Tunggu sebentar untuk memastikan navigation ready
+    setTimeout(() => {
+      if (this.navigationRef && this.pendingAuthDeepLink) {
+        this.executeNavigation(this.pendingAuthDeepLink.targetAction);
+        this.pendingAuthDeepLink = null;
+      }
+    }, 1000);
+  };
+
+  // ✅ EXECUTE NAVIGATION
+  private executeNavigation = (action: DeepLinkAction): void => {
+    if (!this.navigationRef) return;
+
+    switch (action.type) {
+      case 'view-product':
+        this.navigateToProductDetail((action as ViewProductDeepLink).productId);
+        break;
+
+      case 'add-to-cart':
+        this.handleAddToCartAction((action as AddToCartDeepLink).productId);
+        break;
+
+      case 'open-cart':
+        this.navigateToCart();
+        break;
+
+      case 'fallback':
+      default:
+        this.navigateToHome();
+        break;
+    }
+  };
+
   // Setup app state monitoring
   private setupAppStateListener = (): void => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       console.log(`🔄 App state changed: ${this.troubleshootingState.appState} → ${nextAppState}`);
       this.troubleshootingState.appState = nextAppState;
-      
+
       if (nextAppState === 'active') {
         // App came to foreground, process any pending URLs
         setTimeout(() => {
@@ -103,7 +376,7 @@ class DeepLinkingHandler {
         }, 500);
       }
     });
-    
+
     this.subscriptions.push(subscription);
   };
 
@@ -117,6 +390,8 @@ class DeepLinkingHandler {
       }
     });
     this.subscriptions = [];
+    this.pendingAuthDeepLink = null;
+    this.pendingUrl = null;
   };
 
   handleNativeDeepLink = (url: string): void => {
@@ -141,260 +416,152 @@ class DeepLinkingHandler {
     this.handleUrlAndNavigate(url);
   };
 
-  // ENHANCED URL HANDLING DENGAN FALLBACK
+  // ✅ ENHANCED URL HANDLING DENGAN VALIDASI + AUTH GATE
   handleUrlAndNavigate = async (url: string): Promise<void> => {
     try {
       console.log('🔄 Processing URL:', url);
       this.troubleshootingState.lastProcessedUrl = url;
 
-      // Handle Firebase Dynamic Links
-      if (url.includes('ecommerceapp.page.link')) {
-        console.log('🔥 Processing Firebase Dynamic Link');
-        const resolvedUrl = await this.resolveFirebaseDynamicLink(url);
-        if (resolvedUrl) {
-          url = resolvedUrl;
-          console.log('✅ Resolved Dynamic Link:', url);
-        }
-      }
+      // Parse the deep link
+      const result = this.parseDeepLinkUrl(url);
 
-      // Handle Universal Links (https)
-      if (url.startsWith('https://')) {
-        console.log('🌐 Processing Universal Link');
-        const mappedUrl = this.mapUniversalLinkToDeepLink(url);
-        if (mappedUrl) {
-          url = mappedUrl;
-          console.log('✅ Mapped Universal Link to:', url);
-        }
-      }
-
-      const parsedLink = this.parseDeepLink(url);
-      
-      if (!parsedLink) {
-        console.log('❌ Invalid URL format');
-        this.showFallbackAlert('Link tidak valid', 'Format URL tidak dikenali');
+      if (!result.success) {
+        console.log('❌ Invalid deep link format:', result.error);
         this.navigateToHome();
+        this.showFallbackAlert(
+          'Tautan Tidak Valid',
+          result.error || 'Tautan tidak valid, dialihkan ke beranda'
+        );
         return;
       }
 
-      const { route, params, pathSegments, originalUrl } = parsedLink;
-      const cleanRoute = route.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-
-      console.log(`📍 Route: ${cleanRoute}, Params:`, params);
-
-      // Handle profile dengan userId dari path
-      if (cleanRoute === 'profil' || cleanRoute === 'profile') {
-        this.handleProfileNavigation(pathSegments, params);
-        return;
-      }
-
-      // Handle routes lainnya
-      switch (cleanRoute) {
-        case 'home':
-          this.navigateToHome();
-          break;
-        case 'keranjang':
-        case 'cart':
-          this.navigateToCart();
-          break;
-        case 'produk':
-        case 'product':
-          this.navigateToProductDetail(params);
-          break;
-        case 'kategorilist':
-        case 'categorylist':
-          this.navigateToCategoryList();
-          break;
-        default:
-          console.log('❌ Unknown route:', cleanRoute);
-          this.showFallbackAlert('Halaman tidak ditemukan', `Route "${cleanRoute}" tidak dikenali`);
-          this.navigateToHome();
+      // Handle navigation dengan auth gate
+      if (this.navigationRef) {
+        await this.handleDeepLinkNavigation(
+          this.navigationRef,
+          result,
+          this.isUserLoggedIn
+        );
       }
 
     } catch (error) {
       console.log('❌ Error in handleUrlAndNavigate:', error);
       this.troubleshootingState.lastError = `Navigation failed: ${error}`;
-      this.showFallbackAlert('Error', 'Terjadi kesalahan saat memproses link');
       this.navigateToHome();
+      this.showFallbackAlert('Error', 'Failed to process the link');
     }
   };
 
-  // FIREBASE DYNAMIC LINKS RESOLUTION
-  private resolveFirebaseDynamicLink = async (dynamicLinkUrl: string): Promise<string | null> => {
+  // ✅ HANDLE ADD TO CART ACTION
+  private handleAddToCartAction = async (productId: string): Promise<void> => {
     try {
-      // Jika menggunakan Firebase, install @react-native-firebase/dynamic-links
-      // const resolvedLink = await dynamicLinks().resolveLink(dynamicLinkUrl);
-      // return resolvedLink.url;
-      
-      // Fallback: Extract deep link dari Firebase URL pattern
-      if (dynamicLinkUrl.includes('link=')) {
-        const match = dynamicLinkUrl.match(/link=([^&]+)/);
-        if (match) {
-          const decodedUrl = decodeURIComponent(match[1]);
-          console.log('🔗 Extracted deep link from Firebase URL:', decodedUrl);
-          return decodedUrl;
-        }
+      console.log(`🛒 Handling add-to-cart for product: ${productId}`);
+
+      // Use external callback if provided
+      if (this.callbacks.onAddToCart) {
+        await this.callbacks.onAddToCart(productId);
+        return;
       }
-      
-      return null;
+
+      // Fallback: Implement default add to cart behavior
+      await this.defaultAddToCartHandler(productId);
+
     } catch (error) {
-      console.log('❌ Error resolving Firebase Dynamic Link:', error);
-      return null;
+      console.error('❌ Error in handleAddToCartAction:', error);
+      this.showFallbackAlert('Error', 'Failed to add product to cart');
     }
   };
 
-  // UNIVERSAL LINKS MAPPING
-  private mapUniversalLinkToDeepLink = (universalLink: string): string | null => {
+  // ✅ DEFAULT ADD TO CART HANDLER
+  private defaultAddToCartHandler = async (productId: string): Promise<void> => {
     try {
-      const urlObj = new URL(universalLink);
-      const hostname = urlObj.hostname;
-      const pathname = urlObj.pathname;
-      
-      console.log(`🌐 Mapping Universal Link: ${hostname}${pathname}`);
-      
-      // Map berbagai domain ke deep link scheme
-      if (hostname === 'ecommerceapp.com' || hostname === 'www.ecommerceapp.com') {
-        const deepLink = `ecommerceapp://${pathname.replace(/^\//, '')}${urlObj.search}`;
-        console.log(`✅ Mapped to: ${deepLink}`);
-        return deepLink;
+      // Fetch product details
+      const product = await productApi.getProductById(productId);
+
+      // Show success message
+      Alert.alert(
+        'Added to Cart 🛒',
+        `${product.name} has been added to your cart!`,
+        [
+          {
+            text: 'View Cart',
+            onPress: () => this.navigateToCart()
+          },
+          {
+            text: 'Continue Shopping',
+            style: 'cancel'
+          }
+        ]
+      );
+
+      console.log('✅ Product added to cart via deep link:', product.name);
+
+    } catch (error: any) {
+      console.error('❌ Failed to add product via deep link:', error);
+
+      // Error handling dengan berbagai scenario
+      if (error.message?.includes('Failed to fetch') || error.message?.includes('Network')) {
+        Alert.alert(
+          'Network Error',
+          'Please check your internet connection and try again.',
+          [{ text: 'OK' }]
+        );
+      } else if (error.response?.status === 404) {
+        Alert.alert(
+          'Product Not Found',
+          'The requested product could not be found.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'Error',
+          'Failed to add product to cart. Please try again.',
+          [{ text: 'OK' }]
+        );
       }
-      
-      return null;
-    } catch (error) {
-      console.log('❌ Error mapping universal link:', error);
-      return null;
     }
   };
 
-  // ENHANCED URL PARSING
-  private parseDeepLink = (url: string): ParsedDeepLink | null => {
-    try {
-      console.log('🔍 Parsing URL:', url);
-      
-      let route = '';
-      let pathSegments: string[] = [];
-      const params: DeepLinkParams = {};
-
-      // Handle custom scheme
-      if (url.startsWith('ecommerceapp://')) {
-        const withoutScheme = url.replace('ecommerceapp://', '');
-        const [pathPart, queryPart] = withoutScheme.split('?');
-        pathSegments = pathPart.split('/').filter(segment => segment.length > 0);
-        route = pathSegments[0] || '';
-        
-        // Parse query parameters
-        if (queryPart) {
-          const pairs = queryPart.split('&');
-          pairs.forEach(pair => {
-            const [key, value] = pair.split('=');
-            if (key && value) {
-              params[decodeURIComponent(key)] = decodeURIComponent(value);
-            }
-          });
-        }
-      }
-      // Handle https scheme (setelah mapping)
-      else if (url.startsWith('https://')) {
-        console.log('⚠️ HTTPS URL not properly mapped:', url);
-        return null;
-      }
-      else {
-        console.log('❌ Unsupported URL scheme:', url);
-        return null;
-      }
-
-      console.log(`📊 Parsed - Route: ${route}, Segments:`, pathSegments, 'Params:', params);
-      
-      return { route, params, pathSegments, originalUrl: url };
-    } catch (error) {
-      console.log('❌ Error in parseDeepLink:', error);
-      return null;
-    }
+  // ✅ HANDLE VIEW PRODUCT ACTION
+  private handleViewProductAction = (productId: string): void => {
+    console.log(`🔍 Navigating to product: ${productId}`);
+    this.navigateToProductDetail(productId);
   };
 
-  // VALIDASI USER ID YANG LEBIH ROBUST
-  private isValidUserId = (userId: string): boolean => {
-    try {
-      // Minimal 3 karakter, maksimal 50 karakter
-      if (userId.length < 3 || userId.length > 50) {
-        console.log(`❌ User ID length invalid: ${userId.length} characters`);
-        return false;
-      }
-
-      // Hanya alphanumeric, underscore, atau dash
-      const validPattern = /^[a-zA-Z0-9_-]+$/;
-      if (!validPattern.test(userId)) {
-        console.log(`❌ User ID contains invalid characters: ${userId}`);
-        return false;
-      }
-
-      // Cek reserved words
-      const reservedWords = ['admin', 'system', 'root', 'null', 'undefined'];
-      if (reservedWords.includes(userId.toLowerCase())) {
-        console.log(`❌ User ID is reserved word: ${userId}`);
-        return false;
-      }
-
-      console.log(`✅ User ID valid: ${userId}`);
-      return true;
-    } catch (error) {
-      console.log('❌ Error validating user ID:', error);
-      return false;
-    }
+  // ✅ HANDLE OPEN CART ACTION
+  private handleOpenCartAction = (): void => {
+    console.log('🛒 Opening cart');
+    this.navigateToCart();
   };
 
-  // FALLBACK ALERT
+  // ✅ FALLBACK ALERT DENGAN BAHASA INDONESIA
   private showFallbackAlert = (title: string, message: string): void => {
-    if (Platform.OS === 'ios') {
-      // Di iOS, Alert work lebih baik
-      Alert.alert(title, message);
-    } else {
-      // Di Android, bisa gunakan Toast atau console log saja
-      console.log(`⚠️ ${title}: ${message}`);
-      // Atau implementasi Toast Android
-      // ToastAndroid.show(message, ToastAndroid.SHORT);
-    }
+    Alert.alert(title, message, [{ text: 'OK' }]);
   };
 
-  // NAVIGATION METHODS (tetap sama)
+  // ✅ NAVIGATION METHODS
   private navigateToHome = (): void => {
     if (!this.navigationRef) return;
-    this.navigationRef.navigate('RootDrawer', { screen: 'Home' });
+    this.navigationRef.navigate('Home');
     console.log('🏠 Navigated to Home');
+  };
+
+  private navigateToLogin = (): void => {
+    if (!this.navigationRef) return;
+    this.navigationRef.navigate('Login');
+    console.log('🔐 Navigated to Login');
   };
 
   private navigateToCart = (): void => {
     if (!this.navigationRef) return;
-    this.navigationRef.navigate('RootDrawer', { screen: 'Cart' });
+    this.navigationRef.navigate('Cart');
     console.log('🛒 Navigated to Cart');
   };
 
-  private navigateToProductDetail = (params: DeepLinkParams): void => {
+  private navigateToProductDetail = (productId: string): void => {
     if (!this.navigationRef) return;
-    if (!params.productId) {
-      console.log('⚠️ Product ID missing for ProductDetail');
-      this.navigateToHome();
-      return;
-    }
-    this.navigationRef.navigate('ProductDetail', { productId: params.productId });
-    console.log('📦 Navigated to ProductDetail with productId:', params.productId);
-  };
-
-  private navigateToProfile = (): void => {
-    if (!this.navigationRef) return;
-    this.navigationRef.navigate('RootDrawer', { screen: 'Profile' });
-    console.log('👤 Navigated to Profile (default)');
-  };
-
-  private navigateToProfileWithUserId = (userId: string): void => {
-    if (!this.navigationRef) return;
-    this.navigationRef.navigate('RootDrawer', { screen: 'Profile', params: { userId } });
-    console.log(`👤 Navigated to Profile with userId: ${userId}`);
-  };
-
-  private navigateToCategoryList = (): void => {
-    if (!this.navigationRef) return;
-    this.navigationRef.navigate('RootDrawer', { screen: 'CategoryList' });
-    console.log('🗂️ Navigated to CategoryList');
+    this.navigationRef.navigate('ProductDetail', { productId });
+    console.log('📦 Navigated to ProductDetail with productId:', productId);
   };
 
   // TROUBLESHOOTING UTILITIES
@@ -415,42 +582,65 @@ class DeepLinkingHandler {
     }
   };
 
+  // ✅ GET PENDING DEEP LINK INFO
+  getPendingDeepLink = (): PendingDeepLink | null => {
+    return this.pendingAuthDeepLink;
+  };
+
+  // ✅ CLEAR PENDING DEEP LINK
+  clearPendingDeepLink = (): void => {
+    this.pendingAuthDeepLink = null;
+  };
+
   isHandlerReady = (): boolean => this.isReady;
 
   getState = () => ({
     isReady: this.isReady,
     pendingUrl: this.pendingUrl,
+    pendingAuthDeepLink: this.pendingAuthDeepLink,
     hasNavigationRef: !!this.navigationRef,
+    isUserLoggedIn: this.isUserLoggedIn,
     troubleshooting: this.troubleshootingState,
   });
 
-  // TEST METHOD UNTUK DEBUGGING
-  testDeepLink = (url: string): void => {
-    console.log('🧪 Testing deep link:', url);
-    this.handleUrlAndNavigate(url);
+  // ✅ TEST METHOD UNTUK DEEP LINK DENGAN SKENARIO BERBEDA
+  testDeepLinkScenarios = (): void => {
+    const testScenarios = [
+      { url: 'miniecom://product/123', description: 'Valid product ID' },
+      { url: 'miniecom://product/abc', description: 'Invalid product ID (harus angka)' },
+      { url: 'miniecom://add-to-cart/456', description: 'Valid add-to-cart' },
+      { url: 'miniecom://add-to-cart/xyz', description: 'Invalid add-to-cart' },
+      { url: 'miniecom://home', description: 'Home deep link' },
+      { url: 'miniecom://cart', description: 'Cart deep link' },
+      { url: 'miniecom://invalid', description: 'Unknown action' },
+    ];
+
+    console.log('🧪 TESTING DEEP LINK SCENARIOS');
+
+    testScenarios.forEach(({ url, description }) => {
+      console.log(`\n--- Testing: ${description} ---`);
+      console.log(`URL: ${url}`);
+      const result = this.parseDeepLinkUrl(url);
+      console.log('Parse Result:', result);
+
+      // Test validasi
+      if (result.success) {
+        const action = result.action;
+        const validation = this.validateTarget(action, action.type);
+        console.log('Validation Result:', validation);
+      }
+    });
   };
 
-  // DIAGNOSTIC FUNCTION
+  // ✅ DIAGNOSTIC FUNCTION
   runDiagnostics = async (): Promise<void> => {
     console.log('🩺 RUNNING DEEP LINK DIAGNOSTICS');
-    
+
     // Test basic scheme
-    const canOpen = await Linking.canOpenURL('ecommerceapp://test');
-    console.log(`🔗 Can open ecommerceapp:// scheme: ${canOpen}`);
-    
-    // Test URLs
-    const testUrls = [
-      'ecommerceapp://profil/user123',
-      'https://ecommerceapp.com/profil/user123',
-      'ecommerceapp://home',
-      'invalid-url'
-    ];
-    
-    for (const url of testUrls) {
-      console.log(`\n--- Testing: ${url} ---`);
-      await this.testDeepLink(url);
-    }
-    
+    const canOpen = await Linking.canOpenURL('miniecom://test');
+    console.log(`🔗 Can open miniecom:// scheme: ${canOpen}`);
+
+    this.testDeepLinkScenarios();
     this.logTroubleshootingState();
   };
 }
