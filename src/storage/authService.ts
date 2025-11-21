@@ -1,158 +1,134 @@
+// storage/authService.ts - TAMBAHKAN METHOD YANG MISSING
 import { secureStorage } from './secureStorage';
 
-/**
- * UPDATED AUTH SERVICE
- * Compatible dengan secureStorage yang baru
- */
+export interface AuthData {
+  token: string;
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    username?: string;
+  };
+}
 
 export interface LoginCredentials {
   username: string;
   password: string;
 }
 
-export interface AuthResponse {
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
-  user: {
-    id: string;
-    username: string;
-    email: string;
-    name: string;
-    avatar?: string;
-  };
+export interface LoginResponse {
+  token: string;
+  user: AuthData['user'];
 }
 
 class AuthService {
-async login(credentials: LoginCredentials): Promise<AuthResponse> {
+  async login(credentials: LoginCredentials): Promise<LoginResponse> {
     try {
-        console.log('🔐 [AUTH] Starting login with:', credentials);
+      console.log('🔐 Attempting login with:', credentials.username);
+      
+      const response = await fetch('https://dummyjson.com/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: credentials.username,
+          password: credentials.password
+        }),
+      });
 
-        const response = await fetch('https://dummyjson.com/auth/login', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(credentials),
-        });
+      if (!response.ok) {
+        throw new Error('Login failed: Invalid credentials');
+      }
 
-        console.log('📡 [AUTH] Response status:', response.status);
-        
-        const responseText = await response.text();
-        console.log('📡 [AUTH] Response body:', responseText);
+      const data = await response.json();
+      console.log('✅ Login successful for user:', data.username);
 
-        if (!response.ok) {
-            throw new Error(`LOGIN_FAILED: ${response.status} - ${responseText}`);
-        }
+      const minimalUserData = {
+        id: data.id.toString(),
+        username: data.username,
+        name: `${data.firstName} ${data.lastName}`,
+        email: data.email,
+      };
 
-        const data = JSON.parse(responseText);
-        console.log('✅ [AUTH] Login successful, data received:', {
-            hasToken: !!data.token,
-            hasAccessToken: !!data.accessToken,
-            allFields: Object.keys(data)
-        });
+      await secureStorage.setAccessToken(data.token);
+      await secureStorage.setUserData(minimalUserData);
 
-        // Handle case where token might be in different field
-        const accessToken = data.token || data.accessToken || `mock_token_${Date.now()}`;
-        
-        const authResponse: AuthResponse = {
-            accessToken: accessToken,
-            refreshToken: data.refreshToken || `refresh_${Date.now()}`,
-            expiresIn: data.expiresIn || 3600 * 1000,
-            user: {
-                id: data.id.toString(),
-                username: data.username,
-                email: data.email,
-                name: data.firstName && data.lastName 
-                    ? `${data.firstName} ${data.lastName}`
-                    : data.username,
-                avatar: data.image,
-            }
-        };
+      return {
+        token: data.token,
+        user: minimalUserData
+      };
 
-        console.log('✅ [AUTH] Formatted auth response:', authResponse);
-        return authResponse;
-
-    } catch (error) {
-        console.error('❌ [AUTH] Login error:', error);
-        throw error;
+    } catch (error: unknown) {
+      console.error('❌ Login service error:', error);
+      throw error;
     }
-}
+  }
 
+  // ✅ TAMBAHKAN METHOD logout YANG MISSING
   async logout(): Promise<void> {
     try {
       await secureStorage.clearAllSecureData();
-    } catch (error) {
-      console.error('AuthService logout error:', error);
+      console.log('✅ Logout completed');
+    } catch (error: unknown) {
+      console.error('❌ Logout error:', error);
       throw error;
     }
   }
 
-  async getCurrentAuthState(): Promise<{
-    isAuthenticated: boolean;
-    user: any | null;
-    token: string | null;
-  }> {
-    try {
-      const token = await secureStorage.getAccessToken();
-      
-      // Untuk sekarang, return basic state saja
-      // User data bisa di-load dari API nanti jika needed
-      return {
-        isAuthenticated: !!token,
-        user: null, // Bisa di-load dari API jika needed
-        token
-      };
-    } catch (error) {
-      console.error('AuthService getCurrentAuthState error:', error);
-      return {
-        isAuthenticated: false,
-        user: null,
-        token: null
-      };
-    }
-  }
-
+  // ✅ TAMBAHKAN METHOD updateUserData YANG MISSING
   async updateUserData(userData: any): Promise<void> {
     try {
-      // Simpan user data - sementara skip dulu
-      console.log('User data updated (storage pending):', userData);
-    } catch (error) {
-      console.error('AuthService updateUserData error:', error);
+      await secureStorage.setUserData(userData);
+      console.log('✅ User data updated');
+    } catch (error: unknown) {
+      console.error('❌ Update user data error:', error);
       throw error;
     }
   }
 
-  async validateToken(): Promise<boolean> {
+  async loadInitialAuthState(): Promise<{ isAuthenticated: boolean; user: any | null }> {
     try {
-      const token = await secureStorage.getAccessToken();
-      if (!token) return false;
+      console.log('🔍 Checking for existing session...');
+      
+      const accessToken = await secureStorage.getAccessToken();
+      
+      console.log('📦 Session check - Access token:', !!accessToken);
 
-      // TODO: Implement token validation logic
-      // Bisa cek expiry, signature, dll.
-      return true;
-    } catch (error) {
-      console.error('AuthService validateToken error:', error);
-      return false;
-    }
-  }
+      if (!accessToken) {
+        console.log('ℹ️ No access token found');
+        return { isAuthenticated: false, user: null };
+      }
 
-  async refreshAccessToken(): Promise<string | null> {
-    try {
-      const refreshToken = await secureStorage.getRefreshToken();
-      if (!refreshToken) return null;
+      const userData = await secureStorage.getUserData();
+      console.log('📦 Session check - User data:', !!userData);
 
-      // TODO: Implement refresh token logic
-      // const newToken = await api.refreshToken(refreshToken);
-      // await secureStorage.setAccessToken(newToken);
-      // return newToken;
+      if (userData) {
+        console.log('✅ Session valid. User authenticated:', userData.name);
+        return {
+          isAuthenticated: true,
+          user: userData
+        };
+      }
 
-      return null;
-    } catch (error) {
-      console.error('AuthService refreshAccessToken error:', error);
-      return null;
+      console.log('⚠️ User data missing but access token exists');
+      console.log('✅ Considering session valid (user data can be fetched later)');
+      
+      return {
+        isAuthenticated: true,
+        user: {
+          id: 'temp',
+          username: 'user',
+          name: 'User',
+          email: 'user@example.com'
+        }
+      };
+
+    } catch (error: unknown) {
+      console.error('❌ Session check error:', error);
+      return { isAuthenticated: false, user: null };
     }
   }
 }
 
-export const authService = new AuthService();
+export default new AuthService();

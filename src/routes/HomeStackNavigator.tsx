@@ -6,6 +6,7 @@ import ProductDetailScreen from '../screens/dashboard/ProductDetailScreen';
 import ProfileScreen from '../screens/dashboard/Profile';
 import LoginScreen from '../screens/auth/Login';
 import TestErrorScreen from '../screens/auth/TestErrorScreen';
+import KTPUploadScreen from '../components/KTPUploadScreen';
 
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
@@ -47,6 +48,15 @@ const HomeStackNavigator = () => {
         options={{
           title: 'Login',
           headerShown: false,
+        }}
+      />
+
+      <Stack.Screen
+        name="KTPupload"
+        component={KTPUploadScreen}
+        options={{
+          title: 'KTPupload',
+          headerShown: true,
         }}
       />
 

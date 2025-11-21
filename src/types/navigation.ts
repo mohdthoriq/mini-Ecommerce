@@ -9,6 +9,7 @@ export type RootStackParamList = {
   ProductList: undefined
   Profile: undefined;
   Login: undefined;
+  KTPupload: undefined;
 };
 
 export type RootDrawerParamList = {
@@ -20,6 +21,7 @@ export type RootDrawerParamList = {
   Settings: undefined;
   CategoryList: undefined;
   Login: undefined;
+  KTPupload: undefined;
   ProductCategory: { category: string };
   ProductList: undefined;
   ProductDetail: { productId: string }; 
@@ -35,6 +37,7 @@ export type HomeStackParamList = {
   ProductList: undefined;
   Profile: undefined;
   Login: undefined;
+  KTPupload: undefined;
   TestError: undefined;
   CheckoutModal: { 
         product?: Product; // Untuk checkout single product

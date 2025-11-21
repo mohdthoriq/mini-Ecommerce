@@ -1,4 +1,5 @@
-import React, { useState, useContext, useEffect } from 'react';
+// screens/dashboard/Profile.tsx
+import React, { useState, useContext, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,12 +9,16 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { DrawerNavigationProp } from '@react-navigation/drawer';
-import { RootDrawerParamList, User } from '../../types'; // Import User type
-import { AuthContext } from '../../context/AuthContext';
+import { RootDrawerParamList, User } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
+import { useImagePicker } from '../../utils/imagePicker';
+import { useProductImagePicker } from '../../hooks/useProductImagePicker';
+import KTPUploadScreen from '../../components/KTPUploadScreen';
 
 // Extended interface untuk form data
 interface UserFormData {
@@ -25,22 +30,59 @@ interface UserFormData {
 
 const ProfileScreen = () => {
   const navigation = useNavigation<DrawerNavigationProp<RootDrawerParamList>>();
-  const { 
-    user, 
-    isAuthenticated, 
-    updateProfile, 
-    logout, 
-    loadingAuth 
-  } = useContext(AuthContext);
+
+  const {
+    user,
+    isAuthenticated,
+    isLoading: authLoading,
+    updateProfile,
+    logout,
+    clearAllData
+  } = useAuth();
 
   const [isEditing, setIsEditing] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const { pickProductImages } = useProductImagePicker();
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [cachedPreview, setCachedPreview] = useState<string | null>(null);
+  const [imageLoading, setImageLoading] = useState(false);
+  
+  // ✅ UPDATE: Ambil isLoading dari useImagePicker
+  const { 
+    openCamera, 
+    openGallery,
+    openGalleryWithPreview,
+    getCachedPreview,
+    clearCachedPreview,
+    isLoading: imagePickerLoading 
+  } = useImagePicker();
+
   const [userData, setUserData] = useState<UserFormData>({
     name: '',
     email: '',
     phone: '',
     address: '',
   });
+
+  // ✅ LOAD CACHED PREVIEW SAAT COMPONENT MOUNT
+  useEffect(() => {
+    loadCachedPreview();
+  }, []);
+
+  const loadCachedPreview = async () => {
+    setImageLoading(true);
+    try {
+      const preview = await getCachedPreview();
+      if (preview) {
+        setCachedPreview(preview);
+        console.log('✅ Loaded cached preview from storage');
+      }
+    } catch (error) {
+      console.error('Error loading cached preview:', error);
+    } finally {
+      setImageLoading(false);
+    }
+  };
 
   // Safe data extraction dengan fallbacks
   const getUserData = (userData: User | undefined): UserFormData => {
@@ -53,7 +95,7 @@ const ProfileScreen = () => {
   };
 
   const getJoinDate = (userData: User | undefined): string => {
-    return userData?.joinDate || '2024-01-01'; // Default value
+    return userData?.joinDate || '2024-01-01';
   };
 
   // Load user data ketika component mount atau user berubah
@@ -63,32 +105,124 @@ const ProfileScreen = () => {
     }
   }, [user]);
 
+  // ✅ UPDATE: Fungsi media upload dengan loading state
+  const handleMediaUpload = () => {
+    Alert.alert(
+      'Upload Photo',
+      'Pilih sumber foto',
+      [
+        {
+          text: 'Camera',
+          onPress: async () => {
+            setImageLoading(true);
+            try {
+              const media = await openCamera();
+              if (!media || media.length === 0) {
+                Alert.alert('Info', 'Tidak ada foto yang dipilih');
+                return;
+              }
+              setProfileImage(media[0].uri!);
+              Alert.alert('Sukses', 'Foto dari kamera berhasil diambil');
+            } catch (error) {
+              console.error('Camera error:', error);
+              Alert.alert('Error', 'Gagal mengambil foto dari kamera');
+            } finally {
+              setImageLoading(false);
+            }
+          },
+        },
+        {
+          text: 'Gallery (Dengan Preview Cepat)',
+          onPress: async () => {
+            setImageLoading(true);
+            try {
+              const { assets, base64Preview } = await openGalleryWithPreview();
+              if (!assets || assets.length === 0) {
+                Alert.alert('Info', 'Tidak ada foto yang dipilih');
+                return;
+              }
+
+              const asset = assets[0];
+              setProfileImage(asset.uri!);
+              
+              if (base64Preview) {
+                setCachedPreview(base64Preview);
+              }
+
+              Alert.alert('Berhasil', 'Foto profil telah dipilih dan preview disimpan untuk akses cepat');
+            } catch (error) {
+              console.error('Gallery error:', error);
+              Alert.alert('Error', 'Gagal memilih foto dari galeri');
+            } finally {
+              setImageLoading(false);
+            }
+          },
+        },
+        { 
+          text: 'Gallery Biasa',
+          onPress: async () => {
+            setImageLoading(true);
+            try {
+              const media = await openGallery();
+              if (!media || media.length === 0) {
+                Alert.alert('Info', 'Tidak ada foto yang dipilih');
+                return;
+              }
+              setProfileImage(media[0].uri!);
+              Alert.alert('Sukses', 'Foto dari galeri berhasil dipilih');
+            } catch (error) {
+              console.error('Gallery error:', error);
+              Alert.alert('Error', 'Gagal memilih foto dari galeri');
+            } finally {
+              setImageLoading(false);
+            }
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
+  };
+
+  // ✅ UPDATE: Fungsi clear cache dengan loading
+  const handleClearPreviewCache = async () => {
+    setImageLoading(true);
+    try {
+      await clearCachedPreview();
+      setCachedPreview(null);
+      Alert.alert('Berhasil', 'Cache preview telah dihapus');
+    } catch (error) {
+      console.error('Clear cache error:', error);
+      Alert.alert('Error', 'Gagal menghapus cache preview');
+    } finally {
+      setImageLoading(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!userData.name.trim() || !userData.email.trim()) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
 
-    setIsLoading(true);
-    
+    setIsSaving(true);
+
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Update profile dengan data yang valid
+      // ✅ TAMBAHKAN DELAY UNTUK SIMULASI PROSES SIMPAN
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
       updateProfile({
         name: userData.name,
         email: userData.email,
-        phone: userData.phone || undefined, // Convert empty string to undefined
+        phone: userData.phone || undefined,
         address: userData.address || undefined,
-        // joinDate tetap tidak diubah karena readonly
       });
-      
-      setIsLoading(false);
+
+      setIsSaving(false);
       setIsEditing(false);
       Alert.alert('Success', 'Profile updated successfully!');
     } catch (error) {
-      setIsLoading(false);
+      console.error('Save profile error:', error);
+      setIsSaving(false);
       Alert.alert('Error', 'Failed to update profile. Please try again.');
     }
   };
@@ -97,8 +231,20 @@ const ProfileScreen = () => {
     setIsEditing(true);
   };
 
+  const handleSelectImages = async () => {
+    try {
+      const photos = await pickProductImages();
+      if (photos) {
+        console.log('Selected photos:', photos);
+        Alert.alert('Sukses', `${photos.length} foto produk berhasil dipilih`);
+      }
+    } catch (error) {
+      console.error('Select product images error:', error);
+      Alert.alert('Error', 'Gagal memilih foto produk');
+    }
+  };
+
   const handleCancel = () => {
-    // Reset ke data asli
     if (user) {
       setUserData(getUserData(user));
     }
@@ -115,7 +261,7 @@ const ProfileScreen = () => {
   const handleLogout = () => {
     Alert.alert(
       'Logout',
-      'Yakin mau keluar dari akun lu?',
+      'Yakin mau keluar dari akun?',
       [
         {
           text: 'Batal',
@@ -126,8 +272,9 @@ const ProfileScreen = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await logout({ reason: 'user_initiated' });
+              await logout();
             } catch (error) {
+              console.error('Logout error:', error);
               Alert.alert('Error', 'Logout failed. Please try again.');
             }
           },
@@ -151,12 +298,10 @@ const ProfileScreen = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await logout({ 
-                clearAll: false, 
-                reason: 'user_clear_data' 
-              });
+              await clearAllData();
               Alert.alert('Success', 'All data has been cleared successfully');
             } catch (error) {
+              console.error('Clear all data error:', error);
               Alert.alert('Error', 'Failed to clear data. Please try again.');
             }
           },
@@ -165,9 +310,8 @@ const ProfileScreen = () => {
     );
   };
 
-
-  // Loading state
-  if (loadingAuth) {
+  // Loading state - ✅ GUNAKAN isLoading DARI CONTEXT
+  if (authLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#2e7d32" />
@@ -186,7 +330,7 @@ const ProfileScreen = () => {
           <Text style={styles.notLoggedInText}>
             Please login to view your profile
           </Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.loginButton}
             onPress={() => navigation.navigate('Login')}
           >
@@ -210,9 +354,9 @@ const ProfileScreen = () => {
   const formatJoinDate = (joinDate: string) => {
     try {
       const date = new Date(joinDate);
-      return date.toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'long' 
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long'
       });
     } catch {
       return 'January 2024';
@@ -221,28 +365,75 @@ const ProfileScreen = () => {
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      {/* ✅ LOADING OVERLAY UNTUK IMAGE OPERATIONS */}
+      {(imagePickerLoading || imageLoading) && (
+        <View style={styles.globalLoadingOverlay}>
+          <View style={styles.loadingContent}>
+            <ActivityIndicator size="large" color="#2e7d32" />
+            <Text style={styles.loadingOverlayText}>
+              {imagePickerLoading ? 'Memproses gambar...' : 'Menyimpan preview...'}
+            </Text>
+          </View>
+        </View>
+      )}
+
       {/* Header Section */}
       <View style={styles.header}>
         <View style={styles.avatarContainer}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {getInitials(userData.name)}
-            </Text>
-          </View>
-          <TouchableOpacity style={styles.editAvatarButton}>
-            <FontAwesome6 name="camera" size={16} color="#ffffff" iconStyle='solid' />
+          {/* ✅ TAMPILKAN LOADING UNTUK AVATAR */}
+          {(imagePickerLoading || imageLoading) ? (
+            <View style={styles.avatarLoading}>
+              <ActivityIndicator size="small" color="#ffffff" />
+            </View>
+          ) : profileImage ? (
+            <Image
+              source={{ uri: profileImage }}
+              style={styles.avatarImage}
+            />
+          ) : cachedPreview ? (
+            <Image
+              source={{ uri: cachedPreview }}
+              style={styles.avatarImage}
+            />
+          ) : (
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{getInitials(userData.name)}</Text>
+            </View>
+          )}
+
+          <TouchableOpacity 
+            style={[
+              styles.editAvatarButton, 
+              (imagePickerLoading || imageLoading) && styles.buttonDisabled
+            ]} 
+            onPress={handleMediaUpload}
+            disabled={imagePickerLoading || imageLoading}
+          >
+            {(imagePickerLoading || imageLoading) ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <FontAwesome6 name="camera" size={16} color="#ffffff" iconStyle='solid' />
+            )}
           </TouchableOpacity>
         </View>
-        
+
         <Text style={styles.userName}>{userData.name}</Text>
         <Text style={styles.userEmail}>{userData.email}</Text>
-        
+
         <View style={styles.memberSince}>
           <FontAwesome6 name="calendar" size={12} color="#e8f5e9" iconStyle='solid' />
           <Text style={styles.memberSinceText}>
             Member since {formatJoinDate(getJoinDate(user))}
           </Text>
         </View>
+
+        {/* ✅ INDIKATOR CACHED PREVIEW */}
+        {cachedPreview && !imageLoading && (
+          <View style={styles.cacheIndicator}>
+            <FontAwesome6 name="bolt" size={12} color="#e8f5e9" iconStyle='solid' />
+            <Text style={styles.cacheIndicatorText}>Preview Cepat Tersedia</Text>
+          </View>
+        )}
       </View>
 
       {/* Profile Information Section */}
@@ -250,10 +441,10 @@ const ProfileScreen = () => {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Personal Information</Text>
           {!isEditing ? (
-            <TouchableOpacity 
-              style={styles.editButton} 
+            <TouchableOpacity
+              style={styles.editButton}
               onPress={handleEdit}
-              disabled={isLoading}
+              disabled={isSaving || imageLoading}
             >
               <FontAwesome6 name="pen" size={14} color="#2e7d32" iconStyle='solid' />
               <Text style={styles.editButtonText}> Edit</Text>
@@ -274,7 +465,7 @@ const ProfileScreen = () => {
                 onChangeText={(value) => handleInputChange('name', value)}
                 placeholder="Enter your full name"
                 placeholderTextColor="#999"
-                editable={!isLoading}
+                editable={!isSaving && !imageLoading}
               />
             ) : (
               <Text style={styles.value}>{userData.name}</Text>
@@ -295,7 +486,7 @@ const ProfileScreen = () => {
                 placeholderTextColor="#999"
                 keyboardType="email-address"
                 autoCapitalize="none"
-                editable={!isLoading}
+                editable={!isSaving && !imageLoading}
               />
             ) : (
               <Text style={styles.value}>{userData.email}</Text>
@@ -315,7 +506,7 @@ const ProfileScreen = () => {
                 placeholder="Enter your phone number"
                 placeholderTextColor="#999"
                 keyboardType="phone-pad"
-                editable={!isLoading}
+                editable={!isSaving && !imageLoading}
               />
             ) : (
               <Text style={styles.value}>
@@ -339,7 +530,7 @@ const ProfileScreen = () => {
                 multiline
                 numberOfLines={3}
                 textAlignVertical="top"
-                editable={!isLoading}
+                editable={!isSaving && !imageLoading}
               />
             ) : (
               <Text style={styles.value}>
@@ -348,29 +539,56 @@ const ProfileScreen = () => {
             )}
           </View>
 
+          <TouchableOpacity
+            style={[styles.navigationButton, (imageLoading || isSaving) && styles.buttonDisabled]}
+            onPress={() => navigation.navigate('KTPupload')}
+            disabled={imageLoading || isSaving}
+          >
+            <FontAwesome6 name="id-card" size={16} color="#2e7d32" iconStyle='solid' />
+            <Text style={styles.navigationButtonText}> Upload / Ambil Foto KTP</Text>
+          </TouchableOpacity>
+
+          {/* ✅ TOMBOL CLEAR CACHE PREVIEW DENGAN LOADING */}
+          {cachedPreview && (
+            <TouchableOpacity
+              style={[styles.button, styles.clearCacheButton, imageLoading && styles.buttonDisabled]}
+              onPress={handleClearPreviewCache}
+              disabled={imageLoading}
+            >
+              {imageLoading ? (
+                <ActivityIndicator size="small" color="#666" />
+              ) : (
+                <>
+                  <FontAwesome6 name="trash" size={14} color="#666" iconStyle='solid' />
+                  <Text style={styles.clearCacheButtonText}> Hapus Cache Preview</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+
           {/* Edit Mode Buttons */}
           {isEditing && (
             <View style={styles.editButtons}>
-              <TouchableOpacity 
-                style={[styles.button, styles.cancelButton]}
+              <TouchableOpacity
+                style={[styles.button, styles.cancelButton, (isSaving || imageLoading) && styles.buttonDisabled]}
                 onPress={handleCancel}
-                disabled={isLoading}
+                disabled={isSaving || imageLoading}
               >
                 <Text style={styles.cancelButtonText}>
-                  {isLoading ? 'Canceling...' : 'Cancel'}
+                  {isSaving ? 'Canceling...' : 'Cancel'}
                 </Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
+
+              <TouchableOpacity
                 style={[
-                  styles.button, 
+                  styles.button,
                   styles.saveButton,
-                  isLoading && styles.buttonDisabled
+                  (isSaving || imageLoading) && styles.buttonDisabled
                 ]}
                 onPress={handleSave}
-                disabled={isLoading}
+                disabled={isSaving || imageLoading}
               >
-                {isLoading ? (
+                {isSaving ? (
                   <ActivityIndicator color="#ffffff" size="small" />
                 ) : (
                   <>
@@ -411,25 +629,38 @@ const ProfileScreen = () => {
         </View>
       </View>
 
+      {/* Product Images Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Product Management</Text>
+        <TouchableOpacity 
+          style={[styles.actionButton, (imageLoading || isSaving) && styles.buttonDisabled]} 
+          onPress={handleSelectImages}
+          disabled={imageLoading || isSaving}
+        >
+          <FontAwesome6 name="images" size={16} color="#2e7d32" iconStyle='solid' />
+          <Text style={styles.actionButtonText}> Pilih Foto Produk</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Actions Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Account Actions</Text>
-        
+
         <TouchableOpacity style={styles.actionButton}>
           <FontAwesome6 name="credit-card" size={16} color="#2e7d32" iconStyle='solid' />
           <Text style={styles.actionButtonText}> Payment Methods</Text>
         </TouchableOpacity>
-        
+
         <TouchableOpacity style={styles.actionButton}>
           <FontAwesome6 name="location-arrow" size={16} color="#2e7d32" iconStyle='solid' />
           <Text style={styles.actionButtonText}> Shipping Addresses</Text>
         </TouchableOpacity>
-        
+
         <TouchableOpacity style={styles.actionButton}>
           <FontAwesome6 name="bell" size={16} color="#2e7d32" iconStyle='solid' />
           <Text style={styles.actionButtonText}> Notification Settings</Text>
         </TouchableOpacity>
-        
+
         <TouchableOpacity style={styles.actionButton}>
           <FontAwesome6 name="shield" size={16} color="#2e7d32" iconStyle='solid' />
           <Text style={styles.actionButtonText}> Privacy & Security</Text>
@@ -442,19 +673,19 @@ const ProfileScreen = () => {
         <Text style={styles.dangerSectionDescription}>
           These actions are irreversible. Please proceed with caution.
         </Text>
-        
-        <TouchableOpacity 
+
+        <TouchableOpacity
           style={styles.clearDataButton}
           onPress={handleClearAllData}
         >
           <FontAwesome6 name="broom" size={16} color="#ef4444" iconStyle='solid' />
-          <Text style={styles.clearDataButtonText}>Factory Reset</Text>
+          <Text style={styles.clearDataButtonText}> Clear All Data</Text>
         </TouchableOpacity>
       </View>
 
       {/* Logout Button */}
       <View style={styles.section}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.logoutButton}
           onPress={handleLogout}
         >
@@ -463,16 +694,13 @@ const ProfileScreen = () => {
         </TouchableOpacity>
       </View>
 
-
       {/* Bottom Spacer */}
       <View style={styles.bottomSpacer} />
     </ScrollView>
   );
 };
 
-// Styles tetap sama seperti sebelumnya
 const styles = StyleSheet.create({
-  // ... (styles dari kode sebelumnya tetap sama)
   container: {
     flex: 1,
     backgroundColor: '#9bf89bff',
@@ -536,6 +764,11 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginBottom: 16,
   },
+  avatarImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+  },
   avatar: {
     width: 80,
     height: 80,
@@ -553,6 +786,14 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#ffffff',
+  },
+  avatarLoading: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#4caf50',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   editAvatarButton: {
     position: 'absolute',
@@ -588,6 +829,21 @@ const styles = StyleSheet.create({
   },
   memberSinceText: {
     fontSize: 12,
+    color: '#e8f5e9',
+    opacity: 0.9,
+  },
+  cacheIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  cacheIndicatorText: {
+    fontSize: 11,
     color: '#e8f5e9',
     opacity: 0.9,
   },
@@ -672,6 +928,22 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     lineHeight: 24,
   },
+  navigationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#e8f5e9',
+    padding: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2e7d32',
+  },
+  navigationButtonText: {
+    color: '#2e7d32',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
   editButtons: {
     flexDirection: 'row',
     gap: 12,
@@ -705,6 +977,16 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  clearCacheButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  clearCacheButtonText: {
+    color: '#666',
+    fontSize: 14,
+    fontWeight: '500',
   },
   statsGrid: {
     flexDirection: 'row',
@@ -776,6 +1058,30 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 20,
+  },
+  globalLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  loadingContent: {
+    backgroundColor: 'white',
+    padding: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    minWidth: 200,
+  },
+  loadingOverlayText: {
+    marginTop: 10,
+    fontSize: 14,
+    color: '#333',
+    textAlign: 'center',
   },
 });
 

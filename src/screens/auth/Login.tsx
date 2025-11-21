@@ -1,4 +1,5 @@
-import React, { useState, useContext } from 'react';
+// screens/auth/Login.tsx - PERBAIKI DENGAN useAuth HOOK
+import React, { useState } from 'react';
 import {
     View,
     Text,
@@ -15,14 +16,22 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 import { HomeStackParamList } from '../../types';
-import { AuthContext } from '../../context/AuthContext';
-import { validateUsername, validatePassword } from '../../utils/validation';
+import { useAuth } from '../../context/AuthContext'; // ✅ GUNAKAN useAuth HOOK
+// import { validateUsername, validatePassword } from '../../utils/validation'; // HAPUS JIKA TIDAK DIPAKAI
 
 type LoginScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList>;
 
 const LoginScreen = () => {
     const navigation = useNavigation<LoginScreenNavigationProp>();
-    const { login, isAuthenticated, loadingAuth, postLoginRedirect, clearPostLoginRedirect } = useContext(AuthContext);
+    
+    // ✅ GUNAKAN useAuth HOOK YANG BARU
+    const { 
+        login, 
+        isAuthenticated, 
+        isLoading, 
+        postLoginRedirect, 
+        clearPostLoginRedirect 
+    } = useAuth();
 
     const [form, setForm] = useState({
         username: '',
@@ -32,28 +41,25 @@ const LoginScreen = () => {
         username: '',
         password: '',
     });
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoggingIn, setIsLoggingIn] = useState(false); // ✅ RENAME AGAR TIDAK BENTROK DENGAN isLoading DARI CONTEXT
     const [showPassword, setShowPassword] = useState(false);
 
-    // Jika sudah login, redirect ke Home
+    // Redirect jika pengguna sudah terotentikasi
     React.useEffect(() => {
-        if (isAuthenticated && !loadingAuth) {
-            if (postLoginRedirect) {
-                console.log('✅ [LOGIN] Authenticated. Redirecting to stored route:', postLoginRedirect);
-                const { route, params } = postLoginRedirect;
-                // Hapus redirect yang tersimpan agar tidak digunakan lagi
-                clearPostLoginRedirect();
-                // Arahkan ke tujuan awal
-                navigation.navigate(route as any, params);
-            } else {
-                console.log('✅ [LOGIN] Authenticated. No stored route, redirecting to Home.');
-                navigation.reset({
-                    index: 0,
-                    routes: [{ name: 'Home' }],
-                });
-            }
+        if (isAuthenticated) {
+            console.log('✅ [LOGIN] User is authenticated. Checking for post-login redirect.');
+            // Jika ada rute yang disimpan, arahkan ke sana
+            const target = postLoginRedirect || { route: 'Home', params: undefined };
+            
+            console.log(`✅ Redirecting to: ${target.route}`);
+            
+            navigation.reset({
+                index: 0,
+                routes: [{ name: target.route as any, params: target.params }],
+            });
+            clearPostLoginRedirect(); // Hapus redirect setelah digunakan
         }
-    }, [isAuthenticated, loadingAuth, navigation, postLoginRedirect, clearPostLoginRedirect]);
+    }, [isAuthenticated, navigation, postLoginRedirect, clearPostLoginRedirect]);
 
     const handleInputChange = (field: keyof typeof form, value: string) => {
         setForm(prev => ({
@@ -69,148 +75,140 @@ const LoginScreen = () => {
         }
     };
 
-   const validateForm = (): boolean => {
-    // Simple validation saja dulu
-    const usernameError = form.username ? '' : 'Username is required';
-    const passwordError = form.password ? '' : 'Password is required';
+    const validateForm = (): boolean => {
+        // Simple validation saja dulu
+        const usernameError = form.username ? '' : 'Username is required';
+        const passwordError = form.password ? '' : 'Password is required';
 
-    setErrors({
-        username: usernameError,
-        password: passwordError,
-    });
-
-    const isValid = !usernameError && !passwordError;
-    console.log('✅ [VALIDATION] Result:', { 
-        isValid, 
-        username: form.username,
-        passwordLength: form.password.length 
-    });
-    
-    return isValid;
-};
-
-const handleLogin = async () => {
-    if (!validateForm()) {
-        console.log('❌ [LOGIN] Form validation failed');
-        console.log('❌ [LOGIN] Current form state:', form); // Debug form state
-        return;
-    }
-
-    setIsLoading(true);
-    console.log('🔐 [LOGIN] Starting login process...', {
-        username: form.username,
-        passwordLength: form.password.length
-    });
-
-    try {
-        console.log('📞 [LOGIN] Calling AuthContext login...');
-        await login({
-            username: form.username,
-            password: form.password
+        setErrors({
+            username: usernameError,
+            password: passwordError,
         });
 
-        console.log('✅ [LOGIN] AuthContext login completed successfully');
-        Alert.alert('Success', 'Welcome back to Eco Store!');
+        const isValid = !usernameError && !passwordError;
+        console.log('✅ [VALIDATION] Result:', { 
+            isValid, 
+            username: form.username,
+            passwordLength: form.password.length 
+        });
         
-    } catch (error: any) {
-        console.error('❌ [LOGIN] Login error details:', error);
-        Alert.alert(
-            'Login Failed', 
-            error.message || 'Invalid username or password. Please try again.'
-        );
-    } finally { 
-        setIsLoading(false);
-    }
-};
-   const handleDemoLogin = async () => {
-    console.log('🎯 [DEMO] Starting demo login...');
-    
-    // 1. Set form state dulu
-    const demoCredentials = {
-        username: 'emilys',
-        password: 'emilyspass'
+        return isValid;
     };
-    
-    setForm(demoCredentials);
-    console.log('🎯 [DEMO] Form set to:', demoCredentials);
 
-    // 2. Tunggu sebentar biar state ter-update, baru panggil handleLogin
-    setTimeout(() => {
-        console.log('🎯 [DEMO] Now calling handleLogin...');
-        handleLogin();
-    }, 200);
-};
+    const handleLogin = async () => {
+        if (!validateForm()) {
+            console.log('❌ [LOGIN] Form validation failed');
+            console.log('❌ [LOGIN] Current form state:', form);
+            return;
+        }
+
+        setIsLoggingIn(true); // ✅ GUNAKAN isLoggingIn, BUKAN isLoading
+        console.log('🔐 [LOGIN] Starting login process...', {
+            username: form.username,
+            passwordLength: form.password.length
+        });
+
+        try {
+            console.log('📞 [LOGIN] Calling AuthContext login...');
+            await login({
+                username: form.username,
+                password: form.password
+            });
+
+            console.log('✅ [LOGIN] AuthContext login completed successfully');
+            Alert.alert('Success', 'Welcome back to Eco Store!');
+            
+        } catch (error: any) {
+            console.error('❌ [LOGIN] Login error details:', error);
+            Alert.alert(
+                'Login Failed', 
+                error.message || 'Invalid username or password. Please try again.'
+            );
+        } finally { 
+            setIsLoggingIn(false);
+        }
+    };
+
+    const handleDemoLogin = async () => {
+        console.log('🎯 [DEMO] Starting demo login...');
+        
+        // 1. Set form state dulu
+        const demoCredentials = {
+            username: 'emilys',
+            password: 'emilyspass'
+        };
+        
+        setForm(demoCredentials);
+        console.log('🎯 [DEMO] Form set to:', demoCredentials);
+
+        // 2. Tunggu sebentar biar state ter-update, baru panggil handleLogin
+        setTimeout(() => {
+            console.log('🎯 [DEMO] Now calling handleLogin...');
+            handleLogin();
+        }, 200);
+    };
 
     // Test langsung dengan DummyJSON API
     const testDirectAPI = async () => {
-    console.log('🧪 [TEST] Testing direct DummyJSON API call...');
-    
-    // Test multiple possible credentials
-    const testCredentialsList = [
-        { username: 'emilys', password: 'emilyspass' },
-        { username: 'kminchelle', password: '0lelplR' }, // Original
-        { username: 'atuny0', password: '9uQFF1Lh' },
-        { username: 'hbingley1', password: 'CQutx25i8r' }
-    ];
+        console.log('🧪 [TEST] Testing direct DummyJSON API call...');
+        
+        // Test multiple possible credentials
+        const testCredentialsList = [
+            { username: 'emilys', password: 'emilyspass' },
+            { username: 'kminchelle', password: '0lelplR' }, // Original
+            { username: 'atuny0', password: '9uQFF1Lh' },
+            { username: 'hbingley1', password: 'CQutx25i8r' }
+        ];
 
-    for (const testCredentials of testCredentialsList) {
-        try {
-            console.log('📡 [TEST] Testing with:', testCredentials);
-            
-            const response = await fetch('https://dummyjson.com/auth/login', {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(testCredentials),
-            });
-
-            console.log('📡 [TEST] Response status:', response.status);
-            
-            const responseText = await response.text();
-            console.log('📡 [TEST] Response body:', responseText);
-
-            if (response.ok) {
-                const data = JSON.parse(responseText);
-                console.log('✅ [TEST] SUCCESS with credentials:', testCredentials.username);
-                console.log('✅ [TEST] Token received:', data.token ? 'YES' : 'NO');
-                console.log('✅ [TEST] User data:', {
-                    id: data.id,
-                    username: data.username,
-                    email: data.email
+        for (const testCredentials of testCredentialsList) {
+            try {
+                console.log('📡 [TEST] Testing with:', testCredentials);
+                
+                const response = await fetch('https://dummyjson.com/auth/login', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(testCredentials),
                 });
 
-                Alert.alert(
-                    'API Test SUCCESS', 
-                    `Working credentials found!\nUsername: ${testCredentials.username}`
-                );
-                return; // Stop testing after first success
-            } else {
-                console.log('❌ [TEST] Failed with:', testCredentials.username);
-            }
-            
-        } catch (error: any) {
-            console.error('❌ [TEST] Error with', testCredentials.username, ':', error.message);
-        }
-    }
+                console.log('📡 [TEST] Response status:', response.status);
+                
+                const responseText = await response.text();
+                console.log('📡 [TEST] Response body:', responseText);
 
-    // If all failed
-    console.error('❌ [TEST] All test credentials failed');
-    Alert.alert('API Test', 'All test credentials failed. The API might be down.');
-   };
+                if (response.ok) {
+                    const data = JSON.parse(responseText);
+                    console.log('✅ [TEST] SUCCESS with credentials:', testCredentials.username);
+                    console.log('✅ [TEST] Token received:', data.token ? 'YES' : 'NO');
+                    console.log('✅ [TEST] User data:', {
+                        id: data.id,
+                        username: data.username,
+                        email: data.email
+                    });
+
+                    Alert.alert(
+                        'API Test SUCCESS', 
+                        `Working credentials found!\nUsername: ${testCredentials.username}`
+                    );
+                    return; // Stop testing after first success
+                } else {
+                    console.log('❌ [TEST] Failed with:', testCredentials.username);
+                }
+                
+            } catch (error: any) {
+                console.error('❌ [TEST] Error with', testCredentials.username, ':', error.message);
+            }
+        }
+
+        // If all failed
+        console.error('❌ [TEST] All test credentials failed');
+        Alert.alert('API Test', 'All test credentials failed. The API might be down.');
+    };
 
     const toggleShowPassword = () => {
         setShowPassword(!showPassword);
     };
-
-    if (loadingAuth) {
-        return (
-            <View style={styles.splashContainer}>
-                <ActivityIndicator size="large" color="#2e7d32" />
-                <Text style={styles.splashText}>Checking authentication...</Text>
-            </View>
-        );
-    }
 
     return (
         <KeyboardAvoidingView
@@ -305,12 +303,12 @@ const handleLogin = async () => {
                     <TouchableOpacity
                         style={[
                             styles.loginButton,
-                            (isLoading || !form.username || !form.password) && styles.loginButtonDisabled
+                            (isLoggingIn || !form.username || !form.password) && styles.loginButtonDisabled // ✅ GUNAKAN isLoggingIn
                         ]}
                         onPress={handleLogin}
-                        disabled={isLoading || !form.username || !form.password}
+                        disabled={isLoggingIn || !form.username || !form.password} // ✅ GUNAKAN isLoggingIn
                     >
-                        {isLoading ? (
+                        {isLoggingIn ? ( // ✅ GUNAKAN isLoggingIn
                             <ActivityIndicator color="#ffffff" />
                         ) : (
                             <>
@@ -324,7 +322,7 @@ const handleLogin = async () => {
                     <TouchableOpacity
                         style={styles.demoButton}
                         onPress={handleDemoLogin}
-                        disabled={isLoading}
+                        disabled={isLoggingIn} // ✅ GUNAKAN isLoggingIn
                     >
                         <FontAwesome6 name="user-secret" size={14} color="#4caf50" iconStyle='solid' />
                         <Text style={styles.demoButtonText}> Use Test Credentials</Text>
@@ -381,7 +379,9 @@ const handleLogin = async () => {
     );
 };
 
+// Styles tetap sama
 const styles = StyleSheet.create({
+    // ... semua styles tetap sama seperti sebelumnya
     container: {
         flex: 1,
         backgroundColor: '#f8f9fa',
@@ -598,17 +598,6 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#333',
         fontWeight: '500',
-    },
-    splashContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#f8f9fa',
-    },
-    splashText: {
-        marginTop: 16,
-        fontSize: 16,
-        color: '#2e7d32',
     },
 });
 

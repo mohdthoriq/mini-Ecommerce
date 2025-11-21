@@ -1,7 +1,8 @@
+// context/AuthContext.tsx - PERBAIKI DENGAN INTERFACE YANG LENGKAP
 import React, { createContext, useState, ReactNode, useContext, useEffect, useCallback } from 'react';
 import { Alert } from 'react-native';
 import { secureStorage } from '../storage/secureStorage';
-import { authService, LoginCredentials } from '../storage/authService';
+import authService,  { LoginCredentials } from '../storage/authService';
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -15,52 +16,55 @@ interface AppSettings {
   isFirstLaunch: boolean;
 }
 
+// ✅ DEFINE AuthContextType DENGAN LENGKAP
 interface AuthContextType {
   // State
   isAuthenticated: boolean;
-  user: AuthState['user'];
-  loadingAuth: boolean;
+  user: any | null;
+  isLoading: boolean;
+  loadingProgress: number;
+  loadingMessage: string;
   appSettings: AppSettings;
   authError: string | null;
   postLoginRedirect: { route: string; params?: any } | null;
   
-  // Setters untuk hydration
-  setUser: (user: any | null) => void;
-  setToken: (token: string | null) => void;
-  setIsAuthenticated: (isAuthenticated: boolean) => void;
-  
   // Actions
   login: (credentials: LoginCredentials) => Promise<void>;
-  logout: (options?: { clearAll?: boolean; reason?: string }) => Promise<void>;
-  updateProfile: (userData: Partial<AuthState['user']>) => void;
+  logout: () => void;
+  updateProfile: (userData: any) => void;
   updateSettings: (settings: Partial<AppSettings>) => void;
   clearAllData: () => Promise<void>;
-  getStorageInfo: () => Promise<{ hasAccessToken: boolean; hasRefreshToken: boolean }>;
+  getStorageInfo: () => Promise<{ hasAccessToken: boolean; hasUserData: boolean }>;
   clearAuthError: () => void;
   setPostLoginRedirect: (redirect: { route: string; params?: any } | null) => void;
   clearPostLoginRedirect: () => void;
 }
 
-export const AuthContext = createContext<AuthContextType>({} as AuthContextType);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 interface AuthProviderProps {
   children: ReactNode;
 }
 
-export const useAuth = () => {
+// ✅ EXPORT useAuth SEBAGAI NAMED EXPORT
+export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
 };
 
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+// ✅ AuthProvider SEBAGAI DEFAULT EXPORT
+const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [authState, setAuthState] = useState<AuthState>({
     isAuthenticated: false,
     user: null,
   });
-  const [loadingAuth, setLoadingAuth] = useState<boolean>(true);
+  
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [loadingProgress, setLoadingProgress] = useState<number>(0);
+  const [loadingMessage, setLoadingMessage] = useState<string>('Initializing app...');
   const [appSettings, setAppSettings] = useState<AppSettings>({
     theme: 'light',
     notificationsEnabled: true,
@@ -70,85 +74,69 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [authError, setAuthError] = useState<string | null>(null);
   const [postLoginRedirect, setPostLoginRedirect] = useState<{ route: string; params?: any } | null>(null);
 
-  // ✅ SETTERS UNTUK HYDRATION
-  const handleSetUser = useCallback((user: any | null) => {
-    console.log('👤 Setting user from hydration:', user ? 'User loaded' : 'No user');
-    setAuthState(prev => ({ ...prev, user }));
-  }, []);
+  // ✅ CHECK AUTH STATUS
+  const checkAuthStatus = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setAuthError(null);
+      setLoadingProgress(0);
+      setLoadingMessage('Initializing app...');
 
-  const handleSetToken = useCallback(async (token: string | null) => {
-    console.log('🔐 Setting token from hydration:', token ? 'Token loaded' : 'No token');
-    // Token akan dihandle oleh authService, kita cukup update auth state
-    if (token) {
-      setAuthState(prev => ({ ...prev, isAuthenticated: true }));
-    } else {
-      setAuthState(prev => ({ ...prev, isAuthenticated: false }));
+      console.log('🔄 [AUTH] Starting session check...');
+
+      // STEP 1: KEYCHAIN INITIALIZATION
+      setLoadingProgress(20);
+      setLoadingMessage('Checking secure storage...');
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // STEP 2: CHECK EXISTING SESSION
+      setLoadingProgress(50);
+      setLoadingMessage('Checking existing session...');
+      const session = await authService.loadInitialAuthState();
+
+      // STEP 3: FINALIZE
+      setLoadingProgress(80);
+      setLoadingMessage('Finalizing...');
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      if (session.isAuthenticated && session.user) {
+        console.log('✅ [AUTH] Session valid. User authenticated:', session.user.name);
+        setLoadingMessage('Welcome back!');
+        setAuthState({
+          isAuthenticated: true,
+          user: session.user,
+        });
+      } else {
+        console.log('ℹ️ [AUTH] No valid session found');
+        setLoadingMessage('Ready to sign in');
+        setAuthState({
+          isAuthenticated: false,
+          user: null,
+        });
+      }
+
+      setLoadingProgress(100);
+
+    } catch (error: unknown) { // ✅ TAMBAH TYPE UNTUK ERROR
+      console.error('❌ Auth status check error:', error);
+      setLoadingMessage('Loading failed, using default settings');
+      setAuthError('Failed to initialize application');
+      setAuthState({ isAuthenticated: false, user: null });
+    } finally {
+      setTimeout(() => {
+        setIsLoading(false);
+      }, 500);
     }
   }, []);
 
-  const handleSetIsAuthenticated = useCallback((isAuthenticated: boolean) => {
-    console.log('🔒 Setting auth state from hydration:', isAuthenticated);
-    setAuthState(prev => ({ ...prev, isAuthenticated }));
-  }, []);
-
-  const clearAuthError = () => setAuthError(null);
-
-  // Load initial data pada app startup
-  useEffect(() => {
-    const loadInitialData = async () => {
-      try {
-        setLoadingAuth(true);
-        setAuthError(null);
-
-        // 1. Validasi Keychain access
-        const isKeychainAccessible = await secureStorage.validateKeychainAccess();
-        if (!isKeychainAccessible) {
-          throw new Error('Keychain is not accessible');
-        }
-
-        // 2. Load auth state dari secure storage
-        const authState = await authService.getCurrentAuthState();
-        
-        // 3. Set auth state
-        setAuthState({
-          isAuthenticated: authState.isAuthenticated,
-          user: authState.user,
-        });
-
-        // 4. Load app settings (non-sensitive data)
-        try {
-          const theme = 'light';
-          const notificationsEnabled = true;
-          const language = 'en';
-          const isFirstLaunch = true;
-
-          setAppSettings({
-            theme,
-            notificationsEnabled,
-            language,
-            isFirstLaunch,
-          });
-        } catch (settingsError) {
-          console.error('Settings load error:', settingsError);
-        }
-
-      } catch (error) {
-        console.error('Initial data load error:', error);
-        setAuthError('Failed to load application data');
-        setAuthState({ isAuthenticated: false, user: null });
-      } finally {
-        setLoadingAuth(false);
-      }
-    };
-
-    loadInitialData();
-  }, []);
-
+  // ✅ LOGIN FUNCTION - DENGAN ERROR TYPE
   const login = async (credentials: LoginCredentials): Promise<void> => {
     try {
-      setLoadingAuth(true);
+      setIsLoading(true);
       setAuthError(null);
+      setLoadingMessage('Signing in...');
 
+      console.log('🔐 [AUTH] Starting login process...');
       const authResponse = await authService.login(credentials);
       
       setAuthState({
@@ -156,20 +144,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         user: authResponse.user,
       });
 
-    } catch (error) {
-      console.error('Login error:', error);
+      console.log('✅ [AUTH] Login successful');
+
+    } catch (error: unknown) { // ✅ TAMBAH TYPE UNTUK ERROR
+      console.error('❌ Login error:', error);
       setAuthError('Login failed. Please try again.');
       throw error;
     } finally {
-      setLoadingAuth(false);
+      setIsLoading(false);
     }
   };
 
-  const logout = async (options?: { clearAll?: boolean; reason?: string }): Promise<void> => {
+  // ✅ LOGOUT FUNCTION - DENGAN ERROR TYPE
+  const logout = useCallback(async (): Promise<void> => {
     try {
-      setLoadingAuth(true);
-      setAuthError(null);
+      setIsLoading(true);
+      setLoadingMessage('Signing out...');
 
+      console.log('🚪 [AUTH] Starting logout...');
       await authService.logout();
       
       setAuthState({
@@ -177,21 +169,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         user: null,
       });
 
-      console.log('✅ Logout completed:', options?.reason || 'user_initiated');
+      console.log('✅ [AUTH] Logout completed');
 
-    } catch (error) {
-      console.error('Logout error:', error);
+    } catch (error: unknown) { // ✅ TAMBAH TYPE UNTUK ERROR
+      console.error('❌ Logout error:', error);
       setAuthError('Logout failed');
       setAuthState({ isAuthenticated: false, user: null });
     } finally {
-      setLoadingAuth(false);
+      setIsLoading(false);
     }
-  };
+  }, []);
 
+  // ✅ CLEAR ALL DATA - DENGAN ERROR TYPE
   const clearAllData = async (): Promise<void> => {
     try {
-      setLoadingAuth(true);
-      await secureStorage.clearAllSecureData();
+      setIsLoading(true);
+      await authService.logout();
       
       setAuthState({ isAuthenticated: false, user: null });
       setAppSettings({
@@ -201,86 +194,97 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         isFirstLaunch: false,
       });
 
-    } catch (error) {
-      console.error('Clear all data error:', error);
+      console.log('✅ [AUTH] All data cleared');
+
+    } catch (error: unknown) { // ✅ TAMBAH TYPE UNTUK ERROR
+      console.error('❌ Clear all data error:', error);
       setAuthError('Failed to clear data');
       throw error;
     } finally {
-      setLoadingAuth(false);
+      setIsLoading(false);
     }
   };
 
-  const updateProfile = (userData: Partial<AuthState['user']>): void => {
+  const updateProfile = (userData: any): void => {
     setAuthState(prev => {
       if (!prev.user) return prev;
 
       const updatedUser = { ...prev.user, ...userData };
       
       authService.updateUserData(updatedUser)
-        .catch(error => console.error('Profile update storage error:', error));
+        .catch((error: unknown) => console.error('Profile update storage error:', error)); // ✅ TAMBAH TYPE
 
       return { ...prev, user: updatedUser };
     });
   };
 
+  // ✅ UPDATE SETTINGS - DENGAN ERROR TYPE
   const updateSettings = async (settings: Partial<AppSettings>): Promise<void> => {
     try {
       setAppSettings(prev => ({ ...prev, ...settings }));
-      console.log('Settings updated (storage pending):', settings);
-    } catch (error) {
+      console.log('Settings updated:', settings);
+    } catch (error: unknown) { // ✅ TAMBAH TYPE UNTUK ERROR
       console.error('Settings update error:', error);
       setAuthError('Failed to update settings');
       throw error;
     }
   };
 
-  const getStorageInfo = async (): Promise<{ hasAccessToken: boolean; hasRefreshToken: boolean }> => {
+  // ✅ GET STORAGE INFO - DENGAN ERROR TYPE
+  const getStorageInfo = async (): Promise<{ hasAccessToken: boolean; hasUserData: boolean }> => {
     try {
       const info = await secureStorage.getSecureStorageInfo();
       return {
         hasAccessToken: info.hasAccessToken,
-        hasRefreshToken: info.hasRefreshToken,
+        hasUserData: info.hasUserData,
       };
-    } catch (error) {
+    } catch (error: unknown) { // ✅ TAMBAH TYPE UNTUK ERROR
       console.error('Get storage info error:', error);
       return {
         hasAccessToken: false,
-        hasRefreshToken: false,
+        hasUserData: false,
       };
     }
   };
 
+  const clearAuthError = () => setAuthError(null);
+
+  // ✅ INITIAL AUTH CHECK
+  useEffect(() => {
+    checkAuthStatus();
+  }, [checkAuthStatus]);
+
+  // ✅ CONTEXT VALUE
+  const contextValue: AuthContextType = {
+    // State
+    isAuthenticated: authState.isAuthenticated,
+    user: authState.user,
+    isLoading,
+    loadingProgress,
+    loadingMessage,
+    appSettings,
+    authError,
+    postLoginRedirect,
+    
+    // Actions
+    login,
+    logout,
+    updateProfile,
+    updateSettings,
+    clearAllData,
+    getStorageInfo,
+    clearAuthError,
+    setPostLoginRedirect: (redirect) => {
+      setPostLoginRedirect(redirect);
+    },
+    clearPostLoginRedirect: () => setPostLoginRedirect(null),
+  };
+
   return (
-    <AuthContext.Provider
-      value={{
-        // State
-        isAuthenticated: authState.isAuthenticated,
-        user: authState.user,
-        loadingAuth,
-        appSettings,
-        authError,
-        postLoginRedirect,
-        
-        // Setters untuk hydration
-        setUser: handleSetUser,
-        setToken: handleSetToken,
-        setIsAuthenticated: handleSetIsAuthenticated,
-        
-        // Actions
-        login,
-        logout,
-        updateProfile,
-        updateSettings,
-        clearAllData,
-        getStorageInfo,
-        clearAuthError,
-        setPostLoginRedirect: (redirect) => {
-          setPostLoginRedirect(redirect);
-        },
-        clearPostLoginRedirect: () => setPostLoginRedirect(null),
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );
 };
+
+export default AuthProvider;

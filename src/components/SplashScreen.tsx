@@ -1,18 +1,15 @@
+// components/SplashScreen.tsx - SIMPLE VERSION
 import React from 'react';
 import { View, Text, ActivityIndicator, StyleSheet, Animated } from 'react-native';
 
 interface SplashScreenProps {
-  progress: number;
-  loadedServices: string[];
-  failedServices: string[];
   message?: string;
+  progress?: number;
 }
 
 const SplashScreen: React.FC<SplashScreenProps> = ({ 
-  progress, 
-  loadedServices, 
-  failedServices,
-  message = "Loading your experience..." 
+  message = "Loading your session...",
+  progress = 0
 }) => {
   const progressAnim = React.useRef(new Animated.Value(0)).current;
 
@@ -53,21 +50,9 @@ const SplashScreen: React.FC<SplashScreenProps> = ({
               ]} 
             />
           </View>
-          <Text style={styles.progressText}>{progress}%</Text>
-        </View>
-
-        {/* Service Status */}
-        <View style={styles.servicesContainer}>
-          {loadedServices.map(service => (
-            <Text key={service} style={styles.serviceSuccess}>
-              ✅ {service}
-            </Text>
-          ))}
-          {failedServices.map(service => (
-            <Text key={service} style={styles.serviceError}>
-              ⚠️ {service} (Using default)
-            </Text>
-          ))}
+          <Text style={styles.progressText}>
+            {progress < 100 ? `${progress}%` : 'Ready!'}
+          </Text>
         </View>
       </View>
 
@@ -84,7 +69,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#9bf89bff',
+    backgroundColor: '#f8f9fa',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 60,
@@ -123,7 +108,6 @@ const styles = StyleSheet.create({
   progressContainer: {
     width: '80%',
     alignItems: 'center',
-    marginBottom: 20,
   },
   progressBackground: {
     width: '100%',
@@ -142,20 +126,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     fontWeight: '600',
-  },
-  servicesContainer: {
-    width: '80%',
-    maxHeight: 120,
-  },
-  serviceSuccess: {
-    fontSize: 12,
-    color: '#4caf50',
-    marginBottom: 4,
-  },
-  serviceError: {
-    fontSize: 12,
-    color: '#ff9800',
-    marginBottom: 4,
   },
   footer: {
     alignItems: 'center',

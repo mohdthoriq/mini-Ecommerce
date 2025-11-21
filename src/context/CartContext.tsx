@@ -43,6 +43,7 @@ interface CartProviderProps {
 }
 
 export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
+  // ✅ FIX: Inisialisasi dengan array kosong untuk menghindari error
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartLoading, setIsCartLoading] = useState(false);
   const [lastCartError, setLastCartError] = useState<string | null>(null);
@@ -50,9 +51,17 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const { user } = useAuth();
   const currentUserIdRef = useRef<string | undefined>(undefined);
 
-  // Calculate derived values
-  const cartItemCount = cartItems.reduce((total, item) => total + item.quantity, 0);
-  const totalPrice = cartItems.reduce((total, item) => total + (item.product.price * item.quantity), 0);
+  // ✅ FIX: Calculate derived values dengan safety check
+  const cartItemCount = Array.isArray(cartItems) 
+    ? cartItems.reduce((total, item) => total + (item?.quantity || 0), 0)
+    : 0;
+
+  const totalPrice = Array.isArray(cartItems)
+    ? cartItems.reduce((total, item) => {
+        if (!item?.product?.price) return total;
+        return total + (item.product.price * (item.quantity || 0));
+      }, 0)
+    : 0;
 
   // ✅ FIX: Helper to get user-specific storage keys
   const getUserCartStorageKey = useCallback((userId: string | undefined) => 
@@ -61,10 +70,12 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const getUserCartBackupKey = useCallback((userId: string | undefined) => 
     userId ? `${CART_STORAGE_KEYS.CART_BACKUP}_${userId}` : CART_STORAGE_KEYS.CART_BACKUP, []);
 
-  // ✅ SETTER UNTUK HYDRATION (EXPOSED)
+  // ✅ FIX: SETTER UNTUK HYDRATION (EXPOSED) dengan validasi
   const handleSetCartItems = useCallback((items: CartItem[]) => {
-    console.log('🛒 Setting cart items from hydration:', items.length, 'items');
-    setCartItems(items);
+    // Validasi bahwa items adalah array
+    const validatedItems = Array.isArray(items) ? items : [];
+    console.log('🛒 Setting cart items from hydration:', validatedItems.length, 'items');
+    setCartItems(validatedItems);
     setIsCartLoading(false);
     setLastCartError(null);
   }, []);
@@ -161,21 +172,41 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
   }, [getUserCartBackupKey, getUserCartStorageKey, handleQuotaExceeded]);
 
+  // ✅ FIX: Validasi data cart sebelum menyimpan
+  const validateCartItems = (items: any): CartItem[] => {
+    if (!Array.isArray(items)) {
+      console.warn('⚠️ Invalid cart data: not an array, returning empty array');
+      return [];
+    }
+
+    return items.filter(item => 
+      item && 
+      typeof item === 'object' &&
+      item.id &&
+      item.product &&
+      typeof item.quantity === 'number' &&
+      item.quantity > 0
+    );
+  };
+
   // Save cart to storage dengan safeStorage
   const saveCartToStorage = useCallback(async (newCartItems: CartItem[], userId: string | undefined): Promise<void> => {
     try {
       const storageKey = getUserCartStorageKey(userId);
       
+      // ✅ FIX: Validasi data sebelum menyimpan
+      const validatedItems = validateCartItems(newCartItems);
+      
       // Check storage size
-      if (!checkStorageSize(newCartItems)) {
+      if (!checkStorageSize(validatedItems)) {
         console.warn('🔄 Storage size approaching limit, optimizing...');
-        await handleStorageOptimization(newCartItems, userId);
+        await handleStorageOptimization(validatedItems, userId);
         return;
       }
 
       // Save main cart data dengan safeStorage
       const saveResult = await safeStorage.safeSave(storageKey, {
-        items: newCartItems,
+        items: validatedItems,
         lastUpdated: Date.now(),
         version: '1.0'
       });
@@ -199,22 +230,35 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
   }, [getUserCartStorageKey, handleQuotaExceeded, handleStorageOptimization]);
 
-  // Load cart from storage dengan safeStorage
+  // ✅ FIX: Load cart from storage dengan validasi yang lebih ketat
   const loadCartFromStorage = useCallback(async (userId: string | undefined): Promise<CartItem[]> => {
     try {
       const storageKey = getUserCartStorageKey(userId);
       
-      const result = await safeStorage.safeLoad<CartItem[]>(
+      const result = await safeStorage.safeLoad<any>(
         storageKey,
         [], // fallback empty array
         { maxRetries: 3, repairAttempts: 2 }
       );
       
       if (result.success && result.data) {
+        // ✅ FIX: Ekstrak items dari struktur data yang disimpan
+        let loadedItems = result.data;
+        
+        // Handle nested structure { items: CartItem[], ... }
+        if (loadedItems && typeof loadedItems === 'object' && Array.isArray(loadedItems.items)) {
+          loadedItems = loadedItems.items;
+        }
+        
+        // Validasi data yang di-load
+        const validatedItems = validateCartItems(loadedItems);
+        
         if (result.wasRepaired) {
           console.log('🔧 Cart data was repaired during load');
         }
-        return result.data;
+        
+        console.log(`📥 Loaded ${validatedItems.length} valid cart items for user: ${userId || 'guest'}`);
+        return validatedItems;
       } else {
         console.warn('⚠️ Using fallback cart data due to storage issues');
         return [];
@@ -236,7 +280,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     setIsCartLoading(true);
     try {
       // Save current user's cart before switching
-      if (currentUserIdRef.current !== undefined && cartItems.length > 0) {
+      if (currentUserIdRef.current !== undefined && Array.isArray(cartItems) && cartItems.length > 0) {
         await saveCartToStorage(cartItems, currentUserIdRef.current);
       }
 
@@ -259,7 +303,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     handleUserChange();
   }, [handleUserChange]);
 
-  // ✅ IMPLEMENTASI FUNGSI ADD TO CART
+  // ✅ FIX: IMPLEMENTASI FUNGSI ADD TO CART dengan validasi
   const addToCart = async (product: Product, quantity: number = 1): Promise<void> => {
     try {
       setIsCartLoading(true);
@@ -270,12 +314,15 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       }
 
       setCartItems(prevItems => {
-        const existingItemIndex = prevItems.findIndex(item => item.product.id === product.id);
+        // ✅ FIX: Pastikan prevItems adalah array
+        const currentItems = Array.isArray(prevItems) ? prevItems : [];
+        
+        const existingItemIndex = currentItems.findIndex(item => item.product.id === product.id);
         let newItems: CartItem[];
 
         if (existingItemIndex >= 0) {
           // Update existing item quantity
-          newItems = prevItems.map((item, index) =>
+          newItems = currentItems.map((item, index) =>
             index === existingItemIndex
               ? { ...item, quantity: item.quantity + quantity }
               : item
@@ -288,7 +335,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
             product: product,
             quantity: quantity,
           };
-          newItems = [...prevItems, newCartItem];
+          newItems = [...currentItems, newCartItem];
           console.log(`✨ Added "${product.name}" to cart`);
         }
 
@@ -309,7 +356,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
   };
 
-  // ✅ IMPLEMENTASI FUNGSI UPDATE QUANTITY
+  // ✅ FIX: IMPLEMENTASI FUNGSI UPDATE QUANTITY dengan validasi
   const updateQuantity = async (productId: string, quantity: number): Promise<void> => {
     try {
       if (quantity < 0) {
@@ -322,7 +369,10 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       }
 
       setCartItems(prevItems => {
-        const newItems = prevItems.map(item =>
+        // ✅ FIX: Pastikan prevItems adalah array
+        const currentItems = Array.isArray(prevItems) ? prevItems : [];
+        
+        const newItems = currentItems.map(item =>
           item.product.id === productId
             ? { ...item, quantity }
             : item
@@ -344,11 +394,14 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
   };
 
-  // ✅ IMPLEMENTASI FUNGSI REMOVE FROM CART
+  // ✅ FIX: IMPLEMENTASI FUNGSI REMOVE FROM CART dengan validasi
   const removeFromCart = async (productId: string): Promise<void> => {
     try {
       setCartItems(prevItems => {
-        const newItems = prevItems.filter(item => item.product.id !== productId);
+        // ✅ FIX: Pastikan prevItems adalah array
+        const currentItems = Array.isArray(prevItems) ? prevItems : [];
+        
+        const newItems = currentItems.filter(item => item.product.id !== productId);
         
         console.log(`🗑️ Removed product ${productId} from cart`);
 
@@ -365,7 +418,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
   };
 
-  // ✅ IMPLEMENTASI FUNGSI CLEAR CART
+  // ✅ FIX: IMPLEMENTASI FUNGSI CLEAR CART
   const clearCart = async (): Promise<void> => {
     try {
       const storageKey = getUserCartStorageKey(user?.id);
@@ -388,7 +441,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
   };
 
-  // ✅ IMPLEMENTASI FUNGSI REFRESH CART
+  // ✅ FIX: IMPLEMENTASI FUNGSI REFRESH CART
   const refreshCart = async (): Promise<void> => {
     try {
       setIsCartLoading(true);
@@ -408,7 +461,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   // Auto-save dengan safeStorage
   useEffect(() => {
     const autoSave = async () => {
-      if (isSaving || cartItems.length === 0 || isCartLoading) {
+      if (isSaving || !Array.isArray(cartItems) || cartItems.length === 0 || isCartLoading) {
         return;
       }
 
@@ -428,7 +481,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
 
   const value: CartContextType = {
     // State
-    cartItems,
+    cartItems: Array.isArray(cartItems) ? cartItems : [],
     cartItemCount,
     totalPrice,
     isCartLoading,

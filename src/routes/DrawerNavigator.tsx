@@ -19,6 +19,7 @@ import AnalyticsHistoryScreen from '../screens/dashboard/AnalyticsHistory';
 import ProfileScreen from '../screens/dashboard/Profile';
 import AuthGuard from './AuthGuard';
 import TestErrorScreen from '../screens/auth/TestErrorScreen';
+import KTPUploadScreen from '../components/KTPUploadScreen';
 
 
 const Drawer = createDrawerNavigator<RootDrawerParamList>();
@@ -180,6 +181,22 @@ const DrawerNavigator = () => {
         {() => (
           <AuthGuard fallbackToLogin={true}>
             <ProfileScreen />
+          </AuthGuard>
+        )}
+      </Drawer.Screen>
+
+        <Drawer.Screen
+        name="KTPupload"
+        options={{
+          drawerIcon: ({ color, size }) => (
+            <FontAwesome6 name="user" size={size} color={color} iconStyle="solid" />
+          ),
+          title: '👤 Profile',
+        }}
+      >
+        {() => (
+          <AuthGuard fallbackToLogin={true}>
+            <KTPUploadScreen />
           </AuthGuard>
         )}
       </Drawer.Screen>

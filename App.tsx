@@ -34,7 +34,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { StatusBar, LogBox } from 'react-native';
-import { AuthProvider } from './src/context/AuthContext';
+import AuthProvider from './src/context/AuthContext';
 import { SwipeProvider } from './src/context/SwipeContext';
 import Navigation from './src/routes';
 import { CartProvider } from './src/context/CartContext';

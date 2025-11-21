@@ -1,8 +1,7 @@
-import { Linking, EmitterSubscription, Platform, Alert, AppState } from 'react-native';
+import { Linking, Platform, Alert, AppState } from 'react-native';
 import { NavigationContainerRef } from '@react-navigation/native';
 import { NativeModules } from 'react-native';
 import {
-  DeepLinkParams,
   ParsedDeepLink,
   DeepLinkAction,
   DeepLinkResult,
@@ -93,10 +92,10 @@ class DeepLinkingHandler {
       if (Platform.OS === 'android') {
         try {
           if (NativeModules.MainActivity?.getStoredDeepLink) {
-            const url: string | null = await NativeModules.MainActivity.getStoredDeepLink();
-            if (url) {
-              console.log('🤖 Android stored deep link:', url);
-              initialUrl = url;
+            const storedUrl: string | null = await NativeModules.MainActivity.getStoredDeepLink();
+            if (storedUrl) {
+              console.log('🤖 Android stored deep link:', storedUrl);
+              initialUrl = storedUrl;
             }
           }
         } catch (error) {
@@ -112,8 +111,8 @@ class DeepLinkingHandler {
       }
 
       // Check if app can open our scheme
-      const canOpen = await Linking.canOpenURL('miniecom://test');
-      console.log(`🔗 Can open miniecom:// scheme: ${canOpen}`);
+      const canOpen = await Linking.canOpenURL('ecommerceapp://test');
+      console.log(`🔗 Can open ecommerceapp:// scheme: ${canOpen}`);
 
       this.isReady = true;
       this.troubleshootingState.isColdStart = false;
@@ -152,7 +151,7 @@ class DeepLinkingHandler {
 
       // Handle different actions
       if (pathSegments.length === 0) {
-        // miniecom:// - fallback ke home
+        // ecommerceapp:// - fallback ke home
         return {
           success: true,
           action: { type: 'fallback' }
@@ -302,7 +301,7 @@ class DeepLinkingHandler {
 
       // Simpan sebagai pending deep link
       this.pendingAuthDeepLink = {
-        url: `miniecom://${action.type}/${(action as any).productId || ''}`,
+        url: `ecommerceapp://${action.type}/${(action as any).productId || ''}`,
         parsedLink,
         targetAction: action,
         timestamp: Date.now()
@@ -522,23 +521,6 @@ class DeepLinkingHandler {
     }
   };
 
-  // ✅ HANDLE VIEW PRODUCT ACTION
-  private handleViewProductAction = (productId: string): void => {
-    console.log(`🔍 Navigating to product: ${productId}`);
-    this.navigateToProductDetail(productId);
-  };
-
-  // ✅ HANDLE OPEN CART ACTION
-  private handleOpenCartAction = (): void => {
-    console.log('🛒 Opening cart');
-    this.navigateToCart();
-  };
-
-  // ✅ FALLBACK ALERT DENGAN BAHASA INDONESIA
-  private showFallbackAlert = (title: string, message: string): void => {
-    Alert.alert(title, message, [{ text: 'OK' }]);
-  };
-
   // ✅ NAVIGATION METHODS
   private navigateToHome = (): void => {
     if (!this.navigationRef) return;
@@ -562,6 +544,11 @@ class DeepLinkingHandler {
     if (!this.navigationRef) return;
     this.navigationRef.navigate('ProductDetail', { productId });
     console.log('📦 Navigated to ProductDetail with productId:', productId);
+  };
+
+  // ✅ FALLBACK ALERT DENGAN BAHASA INDONESIA
+  private showFallbackAlert = (title: string, message: string): void => {
+    Alert.alert(title, message, [{ text: 'OK' }]);
   };
 
   // TROUBLESHOOTING UTILITIES
@@ -606,13 +593,13 @@ class DeepLinkingHandler {
   // ✅ TEST METHOD UNTUK DEEP LINK DENGAN SKENARIO BERBEDA
   testDeepLinkScenarios = (): void => {
     const testScenarios = [
-      { url: 'miniecom://product/123', description: 'Valid product ID' },
-      { url: 'miniecom://product/abc', description: 'Invalid product ID (harus angka)' },
-      { url: 'miniecom://add-to-cart/456', description: 'Valid add-to-cart' },
-      { url: 'miniecom://add-to-cart/xyz', description: 'Invalid add-to-cart' },
-      { url: 'miniecom://home', description: 'Home deep link' },
-      { url: 'miniecom://cart', description: 'Cart deep link' },
-      { url: 'miniecom://invalid', description: 'Unknown action' },
+      { url: 'ecommerceapp://product/123', description: 'Valid product ID' },
+      { url: 'ecommerceapp://product/abc', description: 'Invalid product ID (harus angka)' },
+      { url: 'ecommerceapp://add-to-cart/456', description: 'Valid add-to-cart' },
+      { url: 'ecommerceapp://add-to-cart/xyz', description: 'Invalid add-to-cart' },
+      { url: 'ecommerceapp://home', description: 'Home deep link' },
+      { url: 'ecommerceapp://cart', description: 'Cart deep link' },
+      { url: 'ecommerceapp://invalid', description: 'Unknown action' },
     ];
 
     console.log('🧪 TESTING DEEP LINK SCENARIOS');
@@ -634,11 +621,9 @@ class DeepLinkingHandler {
 
   // ✅ DIAGNOSTIC FUNCTION
   runDiagnostics = async (): Promise<void> => {
-    console.log('🩺 RUNNING DEEP LINK DIAGNOSTICS');
-
     // Test basic scheme
-    const canOpen = await Linking.canOpenURL('miniecom://test');
-    console.log(`🔗 Can open miniecom:// scheme: ${canOpen}`);
+    const canOpen = await Linking.canOpenURL('ecommerceapp://test');
+    console.log(`🔗 Can open ecommerceapp:// scheme: ${canOpen}`);
 
     this.testDeepLinkScenarios();
     this.logTroubleshootingState();
