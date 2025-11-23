@@ -10,19 +10,27 @@ import {
   TextInput,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSwipe } from '../../context/SwipeContext';
+import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
+import { useAuth } from '../../context/AuthContext';
+import { RootStackParamList } from '../../types/navigation';
 
+// ✅ DEFINE NAVIGATION PROP TYPE
+type SettingsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const SettingsScreen = () => {
-  const navigation = useNavigation();
+  // ✅ GUNAKAN TYPE YANG SUDAH DI DEFINISIKAN
+  const navigation = useNavigation<SettingsScreenNavigationProp>();
   const { canSwipe, setCanSwipe } = useSwipe();
-  
+  const { appSettings, isBiometricAvailable } = useAuth();
+
   const [settings, setSettings] = useState({
     notifications: true,
     darkMode: false,
     autoSync: true,
     locationServices: false,
-    biometricLogin: true,
+    biometricLogin: appSettings.biometricEnabled,
     swipeDrawer: canSwipe
   });
 
@@ -32,18 +40,40 @@ const SettingsScreen = () => {
     region: 'United States',
   });
 
+  const [biometricStatus, setBiometricStatus] = useState({
+    isAvailable: false,
+    isEnabled: false,
+  });
+
   const [feedback, setFeedback] = useState('');
+
+  // ✅ CHECK BIOMETRIC STATUS
+  useEffect(() => {
+    checkBiometricStatus();
+  }, [appSettings.biometricEnabled]);
+
+  const checkBiometricStatus = async () => {
+    try {
+      const available = await isBiometricAvailable();
+      setBiometricStatus({
+        isAvailable: available,
+        isEnabled: appSettings.biometricEnabled,
+      });
+    } catch (error) {
+      console.error('Error checking biometric status:', error);
+    }
+  };
 
   const handleToggleSetting = (setting: keyof typeof settings) => {
     const newValue = !settings[setting];
-    
+
     setSettings(prev => ({
       ...prev,
       [setting]: newValue,
     }));
 
     // ✅ INTEGRASI SWIPE DRAWER DENGAN CONTEXT
-   if (setting === 'swipeDrawer') {
+    if (setting === 'swipeDrawer') {
       setCanSwipe(newValue);
       Alert.alert(
         'Swipe Drawer',
@@ -52,6 +82,30 @@ const SettingsScreen = () => {
           : 'Swipe gesture disabled! Drawer can only be opened via toggle icon.',
         [{ text: 'OK' }]
       );
+    }
+
+    // ✅ HANDLE BIOMETRIC TOGGLE - GUNAKAN 'Biometric'
+    if (setting === 'biometricLogin') {
+      if (newValue) {
+        // Navigate to biometric screen
+        navigation.navigate('Biometric');
+      } else {
+        Alert.alert(
+          'Disable Biometric Login',
+          'Are you sure you want to disable biometric login?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Disable', 
+              style: 'destructive',
+              onPress: () => {
+                // Biometric will be disabled in the Biometric screen
+                navigation.navigate('Biometric');
+              }
+            }
+          ]
+        );
+      }
     }
   };
 
@@ -63,6 +117,14 @@ const SettingsScreen = () => {
     }));
   }, [canSwipe]);
 
+  // ✅ SYNC BIOMETRIC SETTINGS
+  useEffect(() => {
+    setSettings(prev => ({
+      ...prev,
+      biometricLogin: appSettings.biometricEnabled,
+    }));
+  }, [appSettings.biometricEnabled]);
+
   const handleSavePreferences = () => {
     Alert.alert('Success', 'Preferences saved successfully!');
   };
@@ -72,7 +134,7 @@ const SettingsScreen = () => {
       Alert.alert('Error', 'Please provide feedback with at least 10 characters.');
       return;
     }
-    
+
     Alert.alert('Thank You', 'Your feedback has been submitted!');
     setFeedback('');
   };
@@ -119,11 +181,24 @@ const SettingsScreen = () => {
     );
   };
 
+  const getBiometricStatusText = () => {
+    if (!biometricStatus.isAvailable) {
+      return 'Not Available';
+    }
+    return biometricStatus.isEnabled ? 'Enabled' : 'Not Set Up';
+  };
+
+  const getBiometricStatusColor = () => {
+    if (!biometricStatus.isAvailable) {
+      return '#ff9800';
+    }
+    return biometricStatus.isEnabled ? '#4caf50' : '#f44336';
+  };
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Header */}
-       <View style={styles.header}>
+      <View style={styles.header}>
         <Text style={styles.headerTitle}>⚙️ Settings</Text>
         <Text style={styles.headerSubtitle}>
           Manage your app preferences and account settings
@@ -133,14 +208,14 @@ const SettingsScreen = () => {
       {/* App Settings Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>App Settings</Text>
-        
+
         {/* ✅ SWIPE DRAWER TOGGLE - TERINTEGRASI DENGAN CONTEXT */}
-         <View style={styles.settingItem}>
+        <View style={styles.settingItem}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingName}>Swipe to Open Drawer</Text>
             <Text style={styles.settingDescription}>
-              {settings.swipeDrawer 
-                ? 'Drawer can be opened by swiping from screen edge' 
+              {settings.swipeDrawer
+                ? 'Drawer can be opened by swiping from screen edge'
                 : 'Drawer can only be opened via toggle icon'
               }
             </Text>
@@ -152,6 +227,34 @@ const SettingsScreen = () => {
             thumbColor={settings.swipeDrawer ? '#2e7d32' : '#f4f3f4'}
           />
         </View>
+
+        {/* ✅ BIOMETRIC SETTINGS MENU ITEM - GUNAKAN 'Biometric' */}
+        <TouchableOpacity
+          style={styles.biometricMenuItem}
+          onPress={() => navigation.navigate('Biometric')}
+        >
+          <View style={styles.biometricMenuLeft}>
+            <FontAwesome6 name="fingerprint" size={20} color="#2e7d32" iconStyle='solid' />
+            <View style={styles.biometricMenuInfo}>
+              <Text style={styles.biometricMenuName}>Biometric Login</Text>
+              <Text style={styles.biometricMenuDescription}>
+                Use fingerprint or face ID for faster login
+              </Text>
+              <View style={styles.biometricStatus}>
+                <View 
+                  style={[
+                    styles.statusDot, 
+                    { backgroundColor: getBiometricStatusColor() }
+                  ]} 
+                />
+                <Text style={styles.biometricStatusText}>
+                  {getBiometricStatusText()}
+                </Text>
+              </View>
+            </View>
+          </View>
+          <FontAwesome6 name="chevron-right" size={16} color="#666" iconStyle='solid' />
+        </TouchableOpacity>
 
         <View style={styles.settingItem}>
           <View style={styles.settingInfo}>
@@ -212,21 +315,68 @@ const SettingsScreen = () => {
             thumbColor={settings.locationServices ? '#2e7d32' : '#f4f3f4'}
           />
         </View>
+      </View>
 
-        <View style={styles.settingItem}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingName}>Biometric Login</Text>
-            <Text style={styles.settingDescription}>
-              Use fingerprint or face ID for faster login
-            </Text>
+      {/* Security Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Security</Text>
+
+        {/* ✅ GUNAKAN 'Biometric' */}
+        <TouchableOpacity
+          style={styles.securityItem}
+          onPress={() => navigation.navigate('Biometric')}
+        >
+          <View style={styles.securityItemLeft}>
+            <View style={styles.securityIcon}>
+              <FontAwesome6 name="fingerprint" size={20} color="#2e7d32" iconStyle='solid' />
+            </View>
+            <View style={styles.securityInfo}>
+              <Text style={styles.securityName}>Biometric Authentication</Text>
+              <Text style={styles.securityDescription}>
+                Setup Face ID, Touch ID, or fingerprint login
+              </Text>
+            </View>
           </View>
-          <Switch
-            value={settings.biometricLogin}
-            onValueChange={() => handleToggleSetting('biometricLogin')}
-            trackColor={{ false: '#767577', true: '#81b0ff' }}
-            thumbColor={settings.biometricLogin ? '#2e7d32' : '#f4f3f4'}
-          />
-        </View>
+          <View style={styles.securityRight}>
+            <Text style={[
+              styles.securityStatus,
+              { color: getBiometricStatusColor() }
+            ]}>
+              {getBiometricStatusText()}
+            </Text>
+            <FontAwesome6 name="chevron-right" size={14} color="#666" iconStyle='solid' />
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.securityItem}>
+          <View style={styles.securityItemLeft}>
+            <View style={styles.securityIcon}>
+              <FontAwesome6 name="lock" size={20} color="#2e7d32" iconStyle='solid' />
+            </View>
+            <View style={styles.securityInfo}>
+              <Text style={styles.securityName}>Change Password</Text>
+              <Text style={styles.securityDescription}>
+                Update your account password
+              </Text>
+            </View>
+          </View>
+          <FontAwesome6 name="chevron-right" size={14} color="#666" iconStyle='solid' />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.securityItem}>
+          <View style={styles.securityItemLeft}>
+            <View style={styles.securityIcon}>
+              <FontAwesome6 name="shield" size={20} color="#2e7d32" iconStyle='solid' />
+            </View>
+            <View style={styles.securityInfo}>
+              <Text style={styles.securityName}>Two-Factor Authentication</Text>
+              <Text style={styles.securityDescription}>
+                Add extra security to your account
+              </Text>
+            </View>
+          </View>
+          <FontAwesome6 name="chevron-right" size={14} color="#666" iconStyle='solid' />
+        </TouchableOpacity>
       </View>
 
       {/* Preferences Section */}
@@ -352,6 +502,7 @@ const SettingsScreen = () => {
   );
 };
 
+// Styles tetap sama seperti sebelumnya...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -360,7 +511,7 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#2e7d32',
     padding: 24,
-    paddingTop: 40,
+    paddingTop: 60,
   },
   headerTitle: {
     fontSize: 28,
@@ -417,6 +568,95 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     lineHeight: 18,
+  },
+  biometricMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  biometricMenuLeft: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    flex: 1,
+  },
+  biometricMenuInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  biometricMenuName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  biometricMenuDescription: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  biometricStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  biometricStatusText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#666',
+  },
+  securityItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  securityItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  securityIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#e8f5e9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  securityInfo: {
+    flex: 1,
+  },
+  securityName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  securityDescription: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 18,
+  },
+  securityRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  securityStatus: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   preferenceItem: {
     flexDirection: 'row',

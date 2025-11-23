@@ -16,32 +16,25 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { HomeStackParamList, CartItem, Product } from '../../types';
 import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
+import { simplePrompt } from '../../utils/simplePrompt';
 
 type ModalCheckoutNavigationProp = NativeStackNavigationProp<HomeStackParamList, 'CheckoutModal'>;
 
-// Mock Axios Interceptor (dalam aplikasi nyata, ini akan di setup di file terpisah)
+// Mock Axios Interceptor
 const setupAxiosInterceptor = () => {
-  // Simulasi interceptor yang akan menangkap error 400
   return {
     intercept: (callback: (errors: FormErrors) => void) => {
-      // Dalam implementasi nyata, ini akan menjadi axios.interceptors.response.use()
       console.log('🛡️ Axios Response Interceptor configured');
     }
   };
 };
 
-// Type untuk form errors
+// Type untuk form errors (disederhanakan)
 interface FormErrors {
   firstName?: string;
   lastName?: string;
   email?: string;
   phone?: string;
-  addressLine1?: string;
-  addressLine2?: string;
-  city?: string;
-  state?: string;
-  postalCode?: string;
-  country?: string;
   cardNumber?: string;
   expiryDate?: string;
   cvv?: string;
@@ -60,21 +53,13 @@ const CheckoutModalScreen = () => {
     const [isProcessing, setIsProcessing] = useState(false);
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('credit_card');
 
-    // State untuk form data dengan validasi lebih lengkap
+    // State untuk form data yang disederhanakan
     const [formData, setFormData] = useState({
-        // Shipping Information
+        // Contact Information saja
         firstName: '',
         lastName: '',
         email: '',
         phone: '',
-
-        // Address Information
-        addressLine1: '',
-        addressLine2: '',
-        city: '',
-        state: '',
-        postalCode: '',
-        country: 'United States',
 
         // Payment Information (untuk credit card)
         cardNumber: '',
@@ -86,7 +71,7 @@ const CheckoutModalScreen = () => {
     // State untuk form errors dari server
     const [formErrors, setFormErrors] = useState<FormErrors>({});
 
-    // Terima data dari route. Tipe sudah dijamin oleh HomeStackParamList.
+    // Terima data dari route
     const { cartItems, subtotal = 0, discount = 0, shippingFee = 0, tax = 0, total = 0 } = (route.params as HomeStackParamList['CheckoutModal']) || {};
 
     const [checkoutItems, setCheckoutItems] = useState<CartItem[]>(cartItems || []);
@@ -119,17 +104,13 @@ const CheckoutModalScreen = () => {
         return times[shippingMethod];
     };
 
-    // Validasi form yang lebih komprehensif
+    // Validasi form yang disederhanakan
     const isFormValid =
         formData.firstName.trim() &&
         formData.lastName.trim() &&
         formData.email.trim() &&
-        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) && // Email validation
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) &&
         formData.phone.trim() &&
-        formData.addressLine1.trim() &&
-        formData.city.trim() &&
-        formData.state.trim() &&
-        formData.postalCode.trim() &&
         (paymentMethod !== 'credit_card' || (
             formData.cardNumber.replace(/\s/g, '').length === 16 &&
             formData.expiryDate.trim() &&
@@ -138,7 +119,6 @@ const CheckoutModalScreen = () => {
         ));
 
     const handleQuantityChange = (change: number) => {
-        // Fungsi ini hanya relevan jika checkout dari 1 produk
         if (checkoutItems.length === 1) {
             const item = checkoutItems[0];
             const newQuantity = item.quantity + change;
@@ -152,7 +132,7 @@ const CheckoutModalScreen = () => {
     const formatCardNumber = (text: string) => {
         const cleaned = text.replace(/\s/g, '').replace(/\D/g, '');
         const formatted = cleaned.replace(/(\d{4})/g, '$1 ').trim();
-        return formatted.slice(0, 19); // 16 digits + 3 spaces
+        return formatted.slice(0, 19);
     };
 
     const formatExpiryDate = (text: string) => {
@@ -163,12 +143,11 @@ const CheckoutModalScreen = () => {
         return cleaned;
     };
 
-    // Simulasi API call yang mungkin return error 400
+    // Simulasi API call
     const mockApiCall = async (): Promise<{ success: boolean; errors?: any }> => {
         return new Promise((resolve) => {
             setTimeout(() => {
-                // Simulasi server validation error
-                const hasError = Math.random() > 0.7; // 30% chance of error untuk testing
+                const hasError = Math.random() > 0.7;
                 
                 if (hasError) {
                     resolve({
@@ -177,10 +156,6 @@ const CheckoutModalScreen = () => {
                             firstName: !formData.firstName ? 'First name is required' : undefined,
                             email: !formData.email ? 'Email is required' : 
                                   !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) ? 'Invalid email format' : undefined,
-                            addressLine1: !formData.addressLine1 ? 'Address is required' : undefined,
-                            city: !formData.city ? 'City is required' : undefined,
-                            postalCode: !formData.postalCode ? 'Postal code is required' : 
-                                       formData.postalCode.length < 5 ? 'Postal code must be at least 5 characters' : undefined,
                             cardNumber: paymentMethod === 'credit_card' && !formData.cardNumber ? 'Card number is required' : undefined,
                         }
                     });
@@ -191,44 +166,89 @@ const CheckoutModalScreen = () => {
         });
     };
 
-    const handleCheckout = async () => {
+    /**
+     * Process payment setelah konfirmasi
+     */
+    const processPayment = async (): Promise<boolean> => {
+        try {
+            console.log('💳 Memproses pembayaran...');
+            
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            const isSuccess = Math.random() > 0.1;
+            
+            if (isSuccess) {
+                console.log('✅ Pembayaran berhasil');
+                return true;
+            } else {
+                throw new Error('Pembayaran gagal - Saldo tidak cukup');
+            }
+        } catch (error: any) {
+            console.error('❌ Pembayaran gagal:', error.message);
+            throw error;
+        }
+    };
+
+    /**
+     * Handle checkout dengan konfirmasi transfer
+     */
+    const handleCheckoutWithConfirmation = async () => {
         if (!isFormValid) {
-            Alert.alert('Incomplete Information', 'Please fill in all required fields correctly.');
+            Alert.alert('Informasi Tidak Lengkap', 'Harap lengkapi semua field yang diperlukan.');
             return;
         }
 
-        setIsProcessing(true);
-        setFormErrors({}); // Clear previous errors
-
         try {
-            // Simulasi API call yang mungkin return validation errors
-            const result = await mockApiCall();
-
-            if (!result.success && result.errors) {
-                // Simulasi Axios Interceptor menangkap error 400
-                console.log('🔄 Interceptor capturing 400 error:', result.errors);
-                setFormErrors(result.errors);
-                setIsProcessing(false);
-                return;
-            }
-
-            // Jika sukses, lanjutkan dengan order confirmation
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            setIsProcessing(false);
-            Alert.alert(
-                '🎉 Order Confirmed!',
-                `Thank you for your purchase of ${checkoutItems.length} item(s)!\n\nTotal: $${total.toFixed(2)}\n\nA confirmation email has been sent to ${formData.email}`,
-                [
-                    {
-                        text: 'Continue Shopping',
-                        onPress: () => navigation.goBack(),
-                    },
-                ]
+            console.log('🔄 Menampilkan konfirmasi transfer...');
+            
+            const confirmation = await simplePrompt(
+                `Konfirmasi Transfer Rp ${(total * 15000).toLocaleString('id-ID')}`,
+                {
+                    confirmText: 'Transfer Sekarang',
+                    cancelText: 'Batalkan',
+                    title: 'Konfirmasi Pembayaran',
+                    type: 'warning'
+                }
             );
+
+            if (confirmation.success) {
+                console.log('✅ User mengkonfirmasi transfer');
+                
+                setIsProcessing(true);
+                
+                try {
+                    const paymentSuccess = await processPayment();
+                    
+                    if (paymentSuccess) {
+                        setIsProcessing(false);
+                        Alert.alert(
+                            '🎉 Pembayaran Berhasil!',
+                            `Terima kasih telah berbelanja!\n\nTotal: $${total.toFixed(2)}\n\nEmail konfirmasi telah dikirim ke ${formData.email}`,
+                            [
+                                {
+                                    text: 'Lanjutkan Belanja',
+                                    onPress: () => navigation.goBack(),
+                                },
+                            ]
+                        );
+                    }
+                } catch (paymentError: any) {
+                    setIsProcessing(false);
+                    Alert.alert(
+                        '❌ Pembayaran Gagal',
+                        paymentError.message || 'Terjadi kesalahan saat memproses pembayaran. Silakan coba lagi.'
+                    );
+                }
+            } else {
+                console.log('❌ User membatalkan transaksi:', confirmation.message);
+                Alert.alert(
+                    'Transaksi Dibatalkan',
+                    confirmation.message || 'Transaksi telah dibatalkan.'
+                );
+            }
         } catch (error) {
-            setIsProcessing(false);
-            Alert.alert('Payment Failed', 'There was an issue processing your payment. Please try again.');
+            console.error('❌ Error dalam proses checkout:', error);
+            Alert.alert('Error', 'Terjadi kesalahan. Silakan coba lagi.');
         }
     };
 
@@ -260,7 +280,6 @@ const CheckoutModalScreen = () => {
             [field]: formattedValue
         }));
 
-        // Clear error when user starts typing
         if (formErrors[field as keyof FormErrors]) {
             setFormErrors(prev => ({
                 ...prev,
@@ -323,7 +342,7 @@ const CheckoutModalScreen = () => {
                 style={styles.container}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             >
-                {/* Professional Header */}
+                {/* Header */}
                 <View style={styles.header}>
                     <View style={styles.headerContent}>
                         <Text style={styles.headerTitle}>Checkout</Text>
@@ -343,13 +362,13 @@ const CheckoutModalScreen = () => {
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={styles.scrollContent}
                 >
-                    {/* Progress Steps */}
+                    {/* Progress Steps - Disederhanakan */}
                     <View style={styles.progressSteps}>
                         <View style={[styles.step, styles.stepActive]}>
                             <View style={styles.stepNumberActive}>
                                 <Text style={styles.stepNumberText}>1</Text>
                             </View>
-                            <Text style={styles.stepTextActive}>Shipping</Text>
+                            <Text style={styles.stepTextActive}>Contact</Text>
                         </View>
                         <View style={styles.stepDivider} />
                         <View style={[styles.step, styles.stepActive]}>
@@ -357,13 +376,6 @@ const CheckoutModalScreen = () => {
                                 <Text style={styles.stepNumberText}>2</Text>
                             </View>
                             <Text style={styles.stepTextActive}>Payment</Text>
-                        </View>
-                        <View style={styles.stepDivider} />
-                        <View style={styles.step}>
-                            <View style={styles.stepNumber}>
-                                <Text style={styles.stepNumberText}>3</Text>
-                            </View>
-                            <Text style={styles.stepText}>Review</Text>
                         </View>
                     </View>
 
@@ -394,38 +406,15 @@ const CheckoutModalScreen = () => {
                                     <Text style={styles.productPrice}>
                                         ${item.product.price.toLocaleString()}
                                     </Text>
-
-                                    {/* Quantity Controls (hanya jika 1 item) */}
                                     <View style={styles.quantitySection}>
-                                        <Text style={styles.quantityLabel}>Quantity:</Text>
-                                        {checkoutItems.length === 1 ? (
-                                            <View style={styles.quantityControls}>
-                                                <TouchableOpacity
-                                                    style={[styles.quantityButton, item.quantity <= 1 && styles.quantityButtonDisabled]}
-                                                    onPress={() => handleQuantityChange(-1)}
-                                                    disabled={item.quantity <= 1}
-                                                >
-                                                    <FontAwesome6 name="minus" size={14} color={item.quantity <= 1 ? '#9ca3af' : '#374151'} iconStyle='solid' />
-                                                </TouchableOpacity>
-                                                <Text style={styles.quantityText}>{item.quantity}</Text>
-                                                <TouchableOpacity
-                                                    style={[styles.quantityButton, item.quantity >= (item.product.stock || 10) && styles.quantityButtonDisabled]}
-                                                    onPress={() => handleQuantityChange(1)}
-                                                    disabled={item.quantity >= (item.product.stock || 10)}
-                                                >
-                                                    <FontAwesome6 name="plus" size={14} color={item.quantity >= (item.product.stock || 10) ? '#9ca3af' : '#374151'} iconStyle='solid' />
-                                                </TouchableOpacity>
-                                            </View>
-                                        ) : (
-                                            <Text style={styles.quantityTextStatic}>{item.quantity}</Text>
-                                        )}
+                                        <Text style={styles.quantityLabel}>Quantity: {item.quantity}</Text>
                                     </View>
                                 </View>
                             </View>
                         ))}
                     </View>
 
-                    {/* Contact Information */}
+                    {/* Contact Information Saja */}
                     <View style={styles.section}>
                         <Text style={styles.sectionTitle}>Contact Information</Text>
                         <View style={styles.rowInput}>
@@ -464,63 +453,7 @@ const CheckoutModalScreen = () => {
                         />
                     </View>
 
-                    {/* Shipping Address */}
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Shipping Address</Text>
-
-                        <InputField
-                            label="Address Line 1"
-                            field="addressLine1"
-                            placeholder="Street address, P.O. box"
-                            required
-                        />
-
-                        <InputField
-                            label="Address Line 2"
-                            field="addressLine2"
-                            placeholder="Apartment, suite, unit, building, floor, etc."
-                        />
-
-                        <View style={styles.rowInput}>
-                            <View style={[styles.inputGroup, { flex: 2 }]}>
-                                <InputField
-                                    label="City"
-                                    field="city"
-                                    placeholder="City"
-                                    required
-                                />
-                            </View>
-                            <View style={[styles.inputGroup, { flex: 1 }]}>
-                                <InputField
-                                    label="State"
-                                    field="state"
-                                    placeholder="State"
-                                    required
-                                />
-                            </View>
-                        </View>
-
-                        <View style={styles.rowInput}>
-                            <View style={[styles.inputGroup, { flex: 1 }]}>
-                                <InputField
-                                    label="Postal Code"
-                                    field="postalCode"
-                                    placeholder="ZIP code"
-                                    keyboardType="numeric"
-                                    required
-                                />
-                            </View>
-                            <View style={[styles.inputGroup, { flex: 2 }]}>
-                                <InputField
-                                    label="Country"
-                                    field="country"
-                                    placeholder="Country"
-                                />
-                            </View>
-                        </View>
-                    </View>
-
-                    {/* Shipping Method */}
+                    {/* Shipping Method - Tetap ada tapi opsional */}
                     <View style={styles.section}>
                         <Text style={styles.sectionTitle}>Shipping Method</Text>
 
@@ -751,7 +684,7 @@ const CheckoutModalScreen = () => {
                                 styles.checkoutButton,
                                 (isProcessing || !isFormValid) && styles.checkoutButtonDisabled
                             ]}
-                            onPress={handleCheckout}
+                            onPress={handleCheckoutWithConfirmation}
                             disabled={isProcessing || !isFormValid}
                         >
                             {isProcessing ? (
@@ -773,6 +706,7 @@ const CheckoutModalScreen = () => {
     );
 };
 
+// Styles tetap sama
 const styles = StyleSheet.create({
     container: {
         flex: 1,

@@ -22,7 +22,14 @@ type HomeScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList>;
 
 const HomeScreen = () => {
   const navigation = useNavigation<HomeScreenNavigationProp>();
-  const { isAuthenticated, user, logout } = useContext(AuthContext);
+
+  // ✅ PERBAIKI: Gunakan useAuth hook atau handle undefined context
+  const authContext = useContext(AuthContext);
+
+  // ✅ Default values jika context undefined
+  const isAuthenticated = authContext?.isAuthenticated || false;
+  const user = authContext?.user || null;
+  const logout = authContext?.logout || (() => Promise.resolve());
 
   const [isRefreshing, setRefreshing] = useState(false);
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
@@ -31,31 +38,38 @@ const HomeScreen = () => {
   const [isOnline, setIsOnline] = useState<boolean | null>(true);
   const [isNetworkLoading, setNetworkLoading] = useState(false);
 
-  // Fetch featured products dari API
   const fetchFeaturedProducts = useCallback(async () => {
     try {
       setError(null);
+      setLoading(true);
+
       // Cek network sebelum fetch
       const netState = await NetInfo.fetch();
       if (!netState.isConnected) {
         setError('No internet connection');
         setIsOnline(false);
+        setLoading(false);
         return;
       }
 
       setIsOnline(true);
-      // Ambil produk populer dari API
+      console.log('🔄 Fetching featured products...');
+
+      // Ambil produk populer dari API - TAMBAHKAN ERROR HANDLING
       const popularProducts = await productApi.getPopularProducts(4);
+      console.log('✅ Products fetched:', popularProducts.length);
       setFeaturedProducts(popularProducts);
-    } catch (err) {
+
+    } catch (err: any) {
+      console.error('❌ Error fetching featured products:', err);
+
       // Cek jika error karena network
       const netState = await NetInfo.fetch();
       if (!netState.isConnected) {
         setError('No internet connection');
         setIsOnline(false);
       } else {
-        setError('Failed to load featured products');
-        console.error('Error fetching featured products:', err);
+        setError(err.message || 'Failed to load featured products');
       }
     } finally {
       setLoading(false);
@@ -66,10 +80,10 @@ const HomeScreen = () => {
   const handleNetworkOnline = useCallback(() => {
     setNetworkLoading(true);
     setError(null);
-    
+
     // Simulate network delay 2-3 detik
     const delay = Math.random() * 1000 + 2000; // Random antara 2000-3000ms
-    
+
     setTimeout(() => {
       fetchFeaturedProducts().finally(() => {
         setNetworkLoading(false);
@@ -82,9 +96,9 @@ const HomeScreen = () => {
     const unsubscribe = NetInfo.addEventListener(state => {
       const wasOffline = !isOnline;
       const nowOnline = state.isConnected && state.isInternetReachable;
-      
+
       setIsOnline(nowOnline);
-      
+
       // Jika network berubah dari offline ke online, trigger loading dengan delay
       if (wasOffline && nowOnline) {
         handleNetworkOnline();
@@ -167,7 +181,7 @@ const HomeScreen = () => {
   // Network status indicator component
   const NetworkStatus = () => (
     <View style={[
-      styles.networkStatus, 
+      styles.networkStatus,
       isOnline ? styles.networkOnline : styles.networkOffline
     ]}>
       <Text style={styles.networkStatusText}>
@@ -207,19 +221,19 @@ const HomeScreen = () => {
         {!isOnline ? 'No Internet Connection' : 'Failed to Load'}
       </Text>
       <Text style={styles.errorText}>
-        {!isOnline 
+        {!isOnline
           ? 'Please check your internet connection and try again'
           : error
         }
       </Text>
-      
+
       {!isOnline ? (
         <View style={styles.offlineActions}>
           <Text style={styles.offlineText}>
             We'll automatically retry when you're back online
           </Text>
-          <TouchableOpacity 
-            style={[styles.retryButton, styles.offlineButton]} 
+          <TouchableOpacity
+            style={[styles.retryButton, styles.offlineButton]}
             onPress={() => {
               setNetworkLoading(true);
               setTimeout(() => {
@@ -267,7 +281,7 @@ const HomeScreen = () => {
         <Text style={styles.heroSubtitle}>
           Discover sustainable and eco-friendly products that care for our planet
         </Text>
-        
+
         {!isAuthenticated ? (
           <View style={styles.loginPrompt}>
             <Text style={styles.loginText}>
@@ -282,8 +296,8 @@ const HomeScreen = () => {
             <Text style={styles.welcomeText}>
               Ready to explore eco-friendly products?
             </Text>
-            <TouchableOpacity 
-              style={styles.exploreButton} 
+            <TouchableOpacity
+              style={styles.exploreButton}
               onPress={handleExploreCategories}
             >
               <Text style={styles.exploreButtonText}>Explore Products</Text>
@@ -331,9 +345,9 @@ const HomeScreen = () => {
                 style={styles.productCard}
                 onPress={() => handleProductPress(product)}
               >
-                <Image 
-                  source={{ uri: product.image }} 
-                  style={styles.productImage} 
+                <Image
+                  source={{ uri: product.image }}
+                  style={styles.productImage}
                   resizeMode="cover"
                 />
                 <View style={styles.productInfo}>
@@ -341,7 +355,7 @@ const HomeScreen = () => {
                     {product.name}
                   </Text>
                   <Text style={styles.productPrice}>${product.price.toLocaleString()}</Text>
-                  
+
                   {/* Badge Container */}
                   <View style={styles.badgeContainer}>
                     {product.isNew && (

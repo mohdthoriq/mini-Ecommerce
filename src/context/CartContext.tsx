@@ -1,5 +1,4 @@
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Product, CartItem } from '../types';
 import { CartContextType } from '../types/cart';
 import { useAuth } from './AuthContext';
@@ -50,6 +49,12 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const [isSaving, setIsSaving] = useState(false);
   const { user } = useAuth();
   const currentUserIdRef = useRef<string | undefined>(undefined);
+  const cartItemsRef = useRef<CartItem[]>([]); // ✅ REF UNTUK MENCEGAH INFINITE LOOP
+
+  // ✅ UPDATE REF SETIAP CART ITEMS BERUBAH
+  useEffect(() => {
+    cartItemsRef.current = cartItems;
+  }, [cartItems]);
 
   // ✅ FIX: Calculate derived values dengan safety check
   const cartItemCount = Array.isArray(cartItems) 
@@ -63,7 +68,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       }, 0)
     : 0;
 
-  // ✅ FIX: Helper to get user-specific storage keys
+  // ✅ FIX: Helper to get user-specific storage keys - STABIL DEPENDENCY
   const getUserCartStorageKey = useCallback((userId: string | undefined) => 
     userId ? `${CART_STORAGE_KEYS.CART_DATA}_${userId}` : CART_STORAGE_KEYS.CART_DATA, []);
 
@@ -96,7 +101,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
   };
 
-  // Handle quota exceeded by clearing old data and retrying
+  // ✅ FIX: Handle quota exceeded dengan dependency minimal
   const handleQuotaExceeded = useCallback(async (newCartItems: CartItem[], userId: string | undefined): Promise<void> => {
     try {
       console.log('🔄 Handling quota exceeded...');
@@ -130,7 +135,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
   }, [getUserCartStorageKey]);
 
-  // Optimize storage by compressing data
+  // ✅ FIX: Storage optimization dengan dependency minimal
   const handleStorageOptimization = useCallback(async (newCartItems: CartItem[], userId: string | undefined): Promise<void> => {
     try {
       console.log('🔄 Optimizing storage...');
@@ -189,48 +194,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     );
   };
 
-  // Save cart to storage dengan safeStorage
-  const saveCartToStorage = useCallback(async (newCartItems: CartItem[], userId: string | undefined): Promise<void> => {
-    try {
-      const storageKey = getUserCartStorageKey(userId);
-      
-      // ✅ FIX: Validasi data sebelum menyimpan
-      const validatedItems = validateCartItems(newCartItems);
-      
-      // Check storage size
-      if (!checkStorageSize(validatedItems)) {
-        console.warn('🔄 Storage size approaching limit, optimizing...');
-        await handleStorageOptimization(validatedItems, userId);
-        return;
-      }
-
-      // Save main cart data dengan safeStorage
-      const saveResult = await safeStorage.safeSave(storageKey, {
-        items: validatedItems,
-        lastUpdated: Date.now(),
-        version: '1.0'
-      });
-
-      if (!saveResult.success) {
-        throw new Error(saveResult.error || 'Failed to save cart');
-      }
-      
-      setLastCartError(null);
-      console.log(`💾 Cart saved successfully for user: ${userId || 'guest'}`);
-    } catch (error: any) {
-      console.error(`❌ Error saving cart for user ${userId || 'guest'}:`, error);
-      
-      if (error.message?.includes('QUOTA_EXCEEDED') || error.message?.includes('quota')) {
-        setLastCartError('Storage is full. Please clear some items from your cart.');
-        await handleQuotaExceeded(newCartItems, userId);
-      } else {
-        setLastCartError('Failed to save cart changes. Please try again.');
-      }
-      throw error;
-    }
-  }, [getUserCartStorageKey, handleQuotaExceeded, handleStorageOptimization]);
-
-  // ✅ FIX: Load cart from storage dengan validasi yang lebih ketat
+  // ✅ FIX: Load cart from storage dengan validasi yang lebih ketat - STABIL DEPENDENCY
   const loadCartFromStorage = useCallback(async (userId: string | undefined): Promise<CartItem[]> => {
     try {
       const storageKey = getUserCartStorageKey(userId);
@@ -269,19 +233,60 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
   }, [getUserCartStorageKey]);
 
-  // Handle user change and cart switching
-  const handleUserChange = useCallback(async () => {
-    const currentUserId = user?.id;
-    
+  // ✅ FIX: Save cart to storage dengan safeStorage - STABIL DEPENDENCIES
+  const saveCartToStorage = useCallback(async (newCartItems: CartItem[], userId: string | undefined): Promise<void> => {
+    try {
+      const storageKey = getUserCartStorageKey(userId);
+      
+      // ✅ FIX: Validasi data sebelum menyimpan
+      const validatedItems = validateCartItems(newCartItems);
+      
+      // Check storage size
+      if (!checkStorageSize(validatedItems)) {
+        console.warn('🔄 Storage size approaching limit, optimizing...');
+        await handleStorageOptimization(validatedItems, userId);
+        return;
+      }
+
+      // Save main cart data dengan safeStorage
+      const saveResult = await safeStorage.safeSave(storageKey, {
+        items: validatedItems,
+        lastUpdated: Date.now(),
+        version: '1.0'
+      });
+
+      if (!saveResult.success) {
+        throw new Error(saveResult.error || 'Failed to save cart');
+      }
+      
+      setLastCartError(null);
+      console.log(`💾 Cart saved successfully for user: ${userId || 'guest'}`);
+    } catch (error: any) {
+      console.error(`❌ Error saving cart for user ${userId || 'guest'}:`, error);
+      
+      if (error.message?.includes('QUOTA_EXCEEDED') || error.message?.includes('quota')) {
+        setLastCartError('Storage is full. Please clear some items from your cart.');
+        await handleQuotaExceeded(newCartItems, userId);
+      } else {
+        setLastCartError('Failed to save cart changes. Please try again.');
+      }
+      throw error;
+    }
+  }, [getUserCartStorageKey, handleStorageOptimization, handleQuotaExceeded]);
+
+  // ✅ FIX: Handle user change and cart switching - STABILKAN DEPENDENCIES
+  const handleUserChange = useCallback(async (currentUserId: string | undefined) => {
     if (currentUserIdRef.current === currentUserId) {
       return;
     }
 
     setIsCartLoading(true);
     try {
-      // Save current user's cart before switching
-      if (currentUserIdRef.current !== undefined && Array.isArray(cartItems) && cartItems.length > 0) {
-        await saveCartToStorage(cartItems, currentUserIdRef.current);
+      // Save current user's cart before switching - GUNAKAN REF BUKAN STATE
+      if (currentUserIdRef.current !== undefined && 
+          Array.isArray(cartItemsRef.current) && 
+          cartItemsRef.current.length > 0) {
+        await saveCartToStorage(cartItemsRef.current, currentUserIdRef.current);
       }
 
       // Load new user's cart
@@ -296,12 +301,14 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     } finally {
       setIsCartLoading(false);
     }
-  }, [user, cartItems, saveCartToStorage, loadCartFromStorage]);
+  }, [saveCartToStorage, loadCartFromStorage]);
 
-  // Initialize cart on app start and user change
+  // ✅ FIX: Initialize cart on app start and user change - HAPUS CART ITEMS DARI DEPENDENCY
   useEffect(() => {
-    handleUserChange();
-  }, [handleUserChange]);
+    if (user?.id !== currentUserIdRef.current) {
+      handleUserChange(user?.id);
+    }
+  }, [user?.id, handleUserChange]); // ✅ HANYA user.id YANG DI-DEPEND
 
   // ✅ FIX: IMPLEMENTASI FUNGSI ADD TO CART dengan validasi
   const addToCart = async (product: Product, quantity: number = 1): Promise<void> => {
@@ -458,16 +465,16 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
   };
 
-  // Auto-save dengan safeStorage
+  // ✅ FIX: Auto-save dengan safeStorage - GUNAKAN REF UNTUK CART ITEMS & HAPUS CART ITEMS DARI DEPENDENCY
   useEffect(() => {
     const autoSave = async () => {
-      if (isSaving || !Array.isArray(cartItems) || cartItems.length === 0 || isCartLoading) {
+      if (isSaving || !Array.isArray(cartItemsRef.current) || cartItemsRef.current.length === 0 || isCartLoading) {
         return;
       }
 
       setIsSaving(true);
       try {
-        await saveCartToStorage(cartItems, user?.id);
+        await saveCartToStorage(cartItemsRef.current, user?.id);
       } catch (error) {
         console.log('🔄 Auto-save failed (non-critical):', error instanceof Error ? error.message : 'Unknown error');
       } finally {
@@ -477,7 +484,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
 
     const timeoutId = setTimeout(autoSave, 2000);
     return () => clearTimeout(timeoutId);
-  }, [cartItems, isCartLoading, isSaving, saveCartToStorage, user?.id]);
+  }, [isCartLoading, isSaving, saveCartToStorage, user?.id]); // ✅ HAPUS CART ITEMS DARI DEPENDENCY
 
   const value: CartContextType = {
     // State

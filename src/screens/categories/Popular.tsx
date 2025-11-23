@@ -35,11 +35,25 @@ const PopularScreen = () => {
   // Fetch popular products using productApi
   const fetchPopularProducts = async () => {
     try {
+      setLoading(true);
       const products = await productApi.getPopularProducts(12);
       setPopularProducts(products);
     } catch (error: any) {
       console.error('Error in PopularScreen:', error);
       Alert.alert('Error', error.message || 'Failed to load popular products');
+      // Fallback: fetch all products and show the first few
+      try {
+        console.log('Fallback: Fetching all products to display as popular.');
+        const allProducts = await productApi.getAllProducts();
+        // Take the first 12 products as a fallback for "popular"
+        setPopularProducts(allProducts.slice(0, 12));
+      } catch (fallbackError: any) {
+        console.error('Fallback failed in PopularScreen:', fallbackError);
+        Alert.alert(
+          'Error', 
+          fallbackError.message || 'Failed to load any products. Please check your connection.'
+        );
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);

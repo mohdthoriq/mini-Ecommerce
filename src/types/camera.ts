@@ -55,3 +55,4 @@ export interface UseImagePickerReturn {
   openGallery: (options?: Partial<ImagePickerOptions>) => Promise<Asset[] | null>;
   clearImage: () => void;
 }
+

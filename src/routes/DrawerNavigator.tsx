@@ -20,6 +20,7 @@ import ProfileScreen from '../screens/dashboard/Profile';
 import AuthGuard from './AuthGuard';
 import TestErrorScreen from '../screens/auth/TestErrorScreen';
 import KTPUploadScreen from '../components/KTPUploadScreen';
+import BiometricSetupScreen from '../screens/auth/BiometricSetupScreen';
 
 
 const Drawer = createDrawerNavigator<RootDrawerParamList>();
@@ -90,23 +91,23 @@ const DrawerNavigator = () => {
           headerRight: () => (
             <TouchableOpacity
               style={{ marginRight: 16, position: 'relative' }}
-                onPress={() => navigation.navigate('Cart')}
-              >
-                <FontAwesome6 name="cart-shopping" size={24} color="#ffffff" iconStyle='solid' />
-                {cartItemCount > 0 && (
-                  <View style={{
-                    position: 'absolute', right: -8, top: -4, backgroundColor: '#ef4444', borderRadius: 10, width: 20, height: 20, justifyContent: 'center', alignItems: 'center'
+              onPress={() => navigation.navigate('Cart')}
+            >
+              <FontAwesome6 name="cart-shopping" size={24} color="#ffffff" iconStyle='solid' />
+              {cartItemCount > 0 && (
+                <View style={{
+                  position: 'absolute', right: -8, top: -4, backgroundColor: '#ef4444', borderRadius: 10, width: 20, height: 20, justifyContent: 'center', alignItems: 'center'
+                }}>
+                  <Text style={{
+                    color: '#ffffff',
+                    fontSize: 12,
+                    fontWeight: 'bold'
                   }}>
-                    <Text style={{
-                      color: '#ffffff',
-                      fontSize: 12,
-                      fontWeight: 'bold'
-                    }}>
-                      {cartItemCount}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
+                    {cartItemCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
           ),
           drawerStyle: {
             backgroundColor: '#f0f7f0',
@@ -185,7 +186,7 @@ const DrawerNavigator = () => {
         )}
       </Drawer.Screen>
 
-        <Drawer.Screen
+      <Drawer.Screen
         name="KTPupload"
         options={{
           drawerIcon: ({ color, size }) => (
@@ -267,6 +268,23 @@ const DrawerNavigator = () => {
         {() => (
           <AuthGuard fallbackToLogin={true}>
             <ProductListScreen />
+          </AuthGuard>
+        )}
+      </Drawer.Screen>
+
+      <Drawer.Screen
+        name="Biometric"
+        options={{
+          title: 'Biometric Settings',
+          drawerItemStyle: { display: 'none' },
+          drawerIcon: ({ color, size }) => (
+            <FontAwesome6 name="fingerprint" size={size} color={color} iconStyle='solid' />
+          )
+        }}
+      >
+        {() => (
+          <AuthGuard fallbackToLogin={true}>
+            <BiometricSetupScreen />
           </AuthGuard>
         )}
       </Drawer.Screen>

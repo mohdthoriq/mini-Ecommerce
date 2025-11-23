@@ -8,6 +8,7 @@ export type RootStackParamList = {
   ProductDetail: { productId: string };
   ProductList: undefined
   Profile: undefined;
+  Biometric: undefined;
   Login: undefined;
   KTPupload: undefined;
 };
@@ -21,6 +22,7 @@ export type RootDrawerParamList = {
   Settings: undefined;
   CategoryList: undefined;
   Login: undefined;
+  Biometric: undefined;
   KTPupload: undefined;
   ProductCategory: { category: string };
   ProductList: undefined;
@@ -34,6 +36,7 @@ export type HomeStackParamList = {
   CategoriesWithBottomTabs: undefined;
   ProductDetail: { productId: string };
   Cart: undefined;
+  Biometric: undefined;
   ProductList: undefined;
   Profile: undefined;
   Login: undefined;

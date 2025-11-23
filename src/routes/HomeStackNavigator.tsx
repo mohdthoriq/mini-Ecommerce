@@ -7,6 +7,7 @@ import ProfileScreen from '../screens/dashboard/Profile';
 import LoginScreen from '../screens/auth/Login';
 import TestErrorScreen from '../screens/auth/TestErrorScreen';
 import KTPUploadScreen from '../components/KTPUploadScreen';
+import BiometricSetupScreen from '../screens/auth/BiometricSetupScreen';
 
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
@@ -56,6 +57,15 @@ const HomeStackNavigator = () => {
         component={KTPUploadScreen}
         options={{
           title: 'KTPupload',
+          headerShown: true,
+        }}
+      />
+
+      <Stack.Screen
+        name="Biometric"
+        component={BiometricSetupScreen}
+        options={{
+          title: 'Biometric Settings',
           headerShown: true,
         }}
       />

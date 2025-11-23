@@ -1,5 +1,5 @@
-// screens/auth/Login.tsx - PERBAIKI DENGAN useAuth HOOK
-import React, { useState } from 'react';
+// screens/auth/Login.tsx - VERSI LENGKAP DENGAN SEMUA FITUR
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -11,26 +11,35 @@ import {
     Platform,
     ScrollView,
     ActivityIndicator,
+    Linking,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 import { HomeStackParamList } from '../../types';
-import { useAuth } from '../../context/AuthContext'; // ✅ GUNAKAN useAuth HOOK
-// import { validateUsername, validatePassword } from '../../utils/validation'; // HAPUS JIKA TIDAK DIPAKAI
+import { useAuth } from '../../context/AuthContext';
 
 type LoginScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList>;
 
 const LoginScreen = () => {
     const navigation = useNavigation<LoginScreenNavigationProp>();
     
-    // ✅ GUNAKAN useAuth HOOK YANG BARU
     const { 
         login, 
+        biometricLogin,
+        isBiometricAvailable,
+        enableBiometric,
         isAuthenticated, 
         isLoading, 
         postLoginRedirect, 
-        clearPostLoginRedirect 
+        clearPostLoginRedirect,
+        appSettings,
+        securityLockout,
+        lockoutTimeRemaining,
+        resetSecurityLockout,
+        getSecurityStatus,
+        biometryType,
+        getBiometricPromptMessage
     } = useAuth();
 
     const [form, setForm] = useState({
@@ -41,14 +50,73 @@ const LoginScreen = () => {
         username: '',
         password: '',
     });
-    const [isLoggingIn, setIsLoggingIn] = useState(false); // ✅ RENAME AGAR TIDAK BENTROK DENGAN isLoading DARI CONTEXT
+    const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+    const [showBiometric, setShowBiometric] = useState(false);
+    const [checkingBiometric, setCheckingBiometric] = useState(true);
+
+    // ✅ CHECK BIOMETRIC AVAILABILITY SAAT KOMPONEN DIMUAT
+    useEffect(() => {
+        checkBiometricAvailability();
+    }, []);
+
+    const checkBiometricAvailability = async () => {
+        try {
+            const available = await isBiometricAvailable();
+            setShowBiometric(available);
+        } catch (error) {
+            console.log('❌ [BIOMETRIC] Availability check failed:', error);
+            setShowBiometric(false);
+        } finally {
+            setCheckingBiometric(false);
+        }
+    };
+
+    // ✅ GET BIOMETRIC ICON BERDASARKAN TIPE
+    const getBiometricIcon = () => {
+        switch (biometryType) {
+            case 'FaceID':
+                return { name: 'face-smile', color: '#2e7d32' };
+            case 'TouchID':
+            case 'Fingerprint':
+                return { name: 'fingerprint', color: '#2e7d32' };
+            default:
+                return { name: 'fingerprint', color: '#2e7d32' };
+        }
+    };
+
+    // ✅ GET BIOMETRIC BUTTON TEXT
+    const getBiometricButtonText = () => {
+        const promptConfig = getBiometricPromptMessage();
+        return promptConfig.buttonText;
+    };
+
+    // ✅ GET BIOMETRIC DESCRIPTION
+    const getBiometricDescription = () => {
+        switch (biometryType) {
+            case 'FaceID':
+                return 'Gunakan Face ID untuk login cepat dan aman';
+            case 'TouchID':
+                return 'Gunakan Touch ID untuk login cepat dan aman';
+            case 'Fingerprint':
+                return 'Gunakan sidik jari untuk login cepat dan aman';
+            default:
+                return 'Gunakan biometrik untuk login cepat dan aman';
+        }
+    };
+
+    // Reset security lockout setelah login manual berhasil
+    useEffect(() => {
+        if (isAuthenticated && securityLockout) {
+            console.log('✅ [SECURITY] Manual login successful, resetting security lockout');
+            resetSecurityLockout();
+        }
+    }, [isAuthenticated, securityLockout, resetSecurityLockout]);
 
     // Redirect jika pengguna sudah terotentikasi
-    React.useEffect(() => {
+    useEffect(() => {
         if (isAuthenticated) {
             console.log('✅ [LOGIN] User is authenticated. Checking for post-login redirect.');
-            // Jika ada rute yang disimpan, arahkan ke sana
             const target = postLoginRedirect || { route: 'Home', params: undefined };
             
             console.log(`✅ Redirecting to: ${target.route}`);
@@ -57,7 +125,7 @@ const LoginScreen = () => {
                 index: 0,
                 routes: [{ name: target.route as any, params: target.params }],
             });
-            clearPostLoginRedirect(); // Hapus redirect setelah digunakan
+            clearPostLoginRedirect();
         }
     }, [isAuthenticated, navigation, postLoginRedirect, clearPostLoginRedirect]);
 
@@ -76,7 +144,6 @@ const LoginScreen = () => {
     };
 
     const validateForm = (): boolean => {
-        // Simple validation saja dulu
         const usernameError = form.username ? '' : 'Username is required';
         const passwordError = form.password ? '' : 'Password is required';
 
@@ -102,7 +169,7 @@ const LoginScreen = () => {
             return;
         }
 
-        setIsLoggingIn(true); // ✅ GUNAKAN isLoggingIn, BUKAN isLoading
+        setIsLoggingIn(true);
         console.log('🔐 [LOGIN] Starting login process...', {
             username: form.username,
             passwordLength: form.password.length
@@ -129,10 +196,93 @@ const LoginScreen = () => {
         }
     };
 
+    // ✅ HANDLE BIOMETRIC LOGIN DENGAN PROMPT YANG SESUAI
+    const handleBiometricLogin = async () => {
+        console.log('👆 [BIOMETRIC] Starting biometric login...');
+        
+        const securityStatus = getSecurityStatus();
+        if (securityStatus.isLocked) {
+            Alert.alert(
+                'Biometric Locked',
+                securityStatus.isPermanentlyLocked 
+                    ? 'Biometric authentication has been permanently disabled due to security reasons.'
+                    : `Too many failed attempts. Try again in ${securityStatus.timeRemainingMinutes} minutes.`,
+                [{ text: 'OK' }]
+            );
+            return;
+        }
+
+        const result = await biometricLogin();
+        
+        if (result.success) {
+            console.log('✅ [BIOMETRIC] Login successful');
+        } else {
+            if (result.requiresEnrollment) {
+                Alert.alert(
+                    `${getBiometricPromptMessage().title} Belum Diatur`,
+                    `Silakan atur ${biometryType === 'FaceID' ? 'Face ID' : 'sidik jari'} di pengaturan perangkat Anda terlebih dahulu.`,
+                    [
+                        {
+                            text: 'Buka Pengaturan',
+                            onPress: () => {
+                                if (Platform.OS === 'ios') {
+                                    Linking.openURL('App-Prefs:TOUCHID_PASSCODE');
+                                } else {
+                                    Linking.openSettings();
+                                }
+                            }
+                        },
+                        { text: 'Gunakan Password', style: 'default' }
+                    ]
+                );
+            } else if (result.requiresManualFallback && result.error && !result.error.includes('User canceled')) {
+                Alert.alert(
+                    `${getBiometricPromptMessage().title} Gagal`,
+                    result.error || 'Silakan coba login manual',
+                    [{ text: 'OK' }]
+                );
+            }
+        }
+    };
+
+    // ✅ HANDLE ENABLE BIOMETRIC DENGAN PESAN YANG SESUAI
+    const handleEnableBiometric = async () => {
+        if (!form.username || !form.password) {
+            Alert.alert('Enable Biometric', 'Please login first to enable biometric authentication');
+            return;
+        }
+
+        const promptConfig = getBiometricPromptMessage();
+
+        Alert.alert(
+            `Aktifkan ${promptConfig.title}`,
+            `Apakah Anda ingin mengaktifkan ${biometryType === 'FaceID' ? 'Face ID' : 'Touch ID'} untuk login yang lebih cepat?`,
+            [
+                { text: 'Batal', style: 'cancel' },
+                { 
+                    text: 'Aktifkan', 
+                    onPress: async () => {
+                        const success = await enableBiometric({
+                            username: form.username,
+                            password: form.password
+                        });
+                        if (success) {
+                            setShowBiometric(true);
+                            Alert.alert(
+                                'Berhasil', 
+                                `${promptConfig.title} telah diaktifkan! Anda sekarang bisa menggunakan ${biometryType === 'FaceID' ? 'Face ID' : 'Touch ID'} untuk login.`,
+                                [{ text: 'OK' }]
+                            );
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
     const handleDemoLogin = async () => {
         console.log('🎯 [DEMO] Starting demo login...');
         
-        // 1. Set form state dulu
         const demoCredentials = {
             username: 'emilys',
             password: 'emilyspass'
@@ -141,21 +291,18 @@ const LoginScreen = () => {
         setForm(demoCredentials);
         console.log('🎯 [DEMO] Form set to:', demoCredentials);
 
-        // 2. Tunggu sebentar biar state ter-update, baru panggil handleLogin
         setTimeout(() => {
             console.log('🎯 [DEMO] Now calling handleLogin...');
             handleLogin();
         }, 200);
     };
 
-    // Test langsung dengan DummyJSON API
     const testDirectAPI = async () => {
         console.log('🧪 [TEST] Testing direct DummyJSON API call...');
         
-        // Test multiple possible credentials
         const testCredentialsList = [
             { username: 'emilys', password: 'emilyspass' },
-            { username: 'kminchelle', password: '0lelplR' }, // Original
+            { username: 'kminchelle', password: '0lelplR' },
             { username: 'atuny0', password: '9uQFF1Lh' },
             { username: 'hbingley1', password: 'CQutx25i8r' }
         ];
@@ -180,18 +327,11 @@ const LoginScreen = () => {
                 if (response.ok) {
                     const data = JSON.parse(responseText);
                     console.log('✅ [TEST] SUCCESS with credentials:', testCredentials.username);
-                    console.log('✅ [TEST] Token received:', data.token ? 'YES' : 'NO');
-                    console.log('✅ [TEST] User data:', {
-                        id: data.id,
-                        username: data.username,
-                        email: data.email
-                    });
-
                     Alert.alert(
                         'API Test SUCCESS', 
                         `Working credentials found!\nUsername: ${testCredentials.username}`
                     );
-                    return; // Stop testing after first success
+                    return;
                 } else {
                     console.log('❌ [TEST] Failed with:', testCredentials.username);
                 }
@@ -201,13 +341,121 @@ const LoginScreen = () => {
             }
         }
 
-        // If all failed
         console.error('❌ [TEST] All test credentials failed');
         Alert.alert('API Test', 'All test credentials failed. The API might be down.');
     };
 
     const toggleShowPassword = () => {
         setShowPassword(!showPassword);
+    };
+
+    // ✅ SECURITY LOCKOUT DISPLAY COMPONENT
+    const SecurityLockoutDisplay = () => {
+        const securityStatus = getSecurityStatus();
+        
+        if (!securityLockout && !securityStatus.isPermanentlyLocked) {
+            return null;
+        }
+
+        return (
+            <View style={styles.securityAlert}>
+                <FontAwesome6 name="shield" size={20} color="#d32f2f" iconStyle='solid' />
+                <View style={styles.securityTextContainer}>
+                    <Text style={styles.securityTitle}>
+                        {securityStatus.isPermanentlyLocked ? '🚨 Security Lockout' : '⏰ Temporary Lockout'}
+                    </Text>
+                    <Text style={styles.securityMessage}>
+                        {securityStatus.isPermanentlyLocked 
+                            ? 'Biometric authentication permanently disabled due to security concerns.'
+                            : `Too many failed attempts. Try again in ${securityStatus.timeRemainingMinutes} minutes.`
+                        }
+                    </Text>
+                    {/* ✅ TAMPILKAN COUNTDOWN JIKA ADA */}
+                    {!securityStatus.isPermanentlyLocked && securityStatus.timeRemaining > 0 && (
+                        <Text style={styles.countdownText}>
+                            Time remaining: {Math.floor(securityStatus.timeRemaining / 60000)}:
+                            {Math.floor((securityStatus.timeRemaining % 60000) / 1000)
+                                .toString()
+                                .padStart(2, '0')}
+                        </Text>
+                    )}
+                </View>
+            </View>
+        );
+    };
+
+    // ✅ BIOMETRIC LOGIN SECTION COMPONENT - DINAMIS BERDASARKAN TIPE
+    const BiometricLoginSection = () => {
+        const securityStatus = getSecurityStatus();
+        const biometricIcon = getBiometricIcon();
+        
+        if (checkingBiometric) {
+            return (
+                <TouchableOpacity style={styles.biometricButton} disabled>
+                    <ActivityIndicator size="small" color="#2e7d32" />
+                    <Text style={styles.biometricButtonText}> Checking Biometric...</Text>
+                </TouchableOpacity>
+            );
+        }
+
+        if (showBiometric && !securityStatus.isPermanentlyLocked) {
+            return (
+                <View style={styles.biometricSection}>
+                    <Text style={styles.biometricDescription}>
+                        {getBiometricDescription()}
+                    </Text>
+                    <TouchableOpacity
+                        style={[
+                            styles.biometricButton,
+                            securityLockout && styles.biometricButtonDisabled
+                        ]}
+                        onPress={handleBiometricLogin}
+                        disabled={isLoggingIn || securityLockout}
+                    >
+                        <FontAwesome6 
+                            name={biometricIcon.name as any} 
+                            size={24} 
+                            color={securityLockout ? "#999" : biometricIcon.color} 
+                            iconStyle='solid' 
+                        />
+                        <Text style={[
+                            styles.biometricButtonText,
+                            securityLockout && styles.biometricButtonTextDisabled
+                        ]}>
+                            {getBiometricButtonText()}
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        }
+
+        // Show enable button only after successful manual login
+        if (isAuthenticated && !appSettings.biometricEnabled && !securityStatus.isPermanentlyLocked) {
+            return (
+                <TouchableOpacity
+                    style={styles.enableBiometricButton}
+                    onPress={handleEnableBiometric}
+                >
+                    <FontAwesome6 name={getBiometricIcon().name as any} size={16} color="#ffffff" iconStyle='solid' />
+                    <Text style={styles.enableBiometricButtonText}>
+                        Aktifkan {biometryType === 'FaceID' ? 'Face ID' : 'Touch ID'}
+                    </Text>
+                </TouchableOpacity>
+            );
+        }
+
+        if (securityStatus.isPermanentlyLocked) {
+            return (
+                <View style={styles.permanentLockoutInfo}>
+                    <FontAwesome6 name="ban" size={16} color="#d32f2f" iconStyle='solid' />
+                    <Text style={styles.permanentLockoutText}>
+                        Biometric permanently disabled for security
+                    </Text>
+                </View>
+            );
+        }
+
+        return null;
     };
 
     return (
@@ -227,6 +475,12 @@ const LoginScreen = () => {
                         Sign in to your Eco Store account
                     </Text>
                 </View>
+
+                {/* ✅ SECURITY LOCKOUT DISPLAY */}
+                <SecurityLockoutDisplay />
+
+                {/* ✅ BIOMETRIC LOGIN SECTION - DINAMIS */}
+                <BiometricLoginSection />
 
                 {/* Login Form */}
                 <View style={styles.form}>
@@ -303,12 +557,12 @@ const LoginScreen = () => {
                     <TouchableOpacity
                         style={[
                             styles.loginButton,
-                            (isLoggingIn || !form.username || !form.password) && styles.loginButtonDisabled // ✅ GUNAKAN isLoggingIn
+                            (isLoggingIn || !form.username || !form.password) && styles.loginButtonDisabled
                         ]}
                         onPress={handleLogin}
-                        disabled={isLoggingIn || !form.username || !form.password} // ✅ GUNAKAN isLoggingIn
+                        disabled={isLoggingIn || !form.username || !form.password}
                     >
-                        {isLoggingIn ? ( // ✅ GUNAKAN isLoggingIn
+                        {isLoggingIn ? (
                             <ActivityIndicator color="#ffffff" />
                         ) : (
                             <>
@@ -322,7 +576,7 @@ const LoginScreen = () => {
                     <TouchableOpacity
                         style={styles.demoButton}
                         onPress={handleDemoLogin}
-                        disabled={isLoggingIn} // ✅ GUNAKAN isLoggingIn
+                        disabled={isLoggingIn}
                     >
                         <FontAwesome6 name="user-secret" size={14} color="#4caf50" iconStyle='solid' />
                         <Text style={styles.demoButtonText}> Use Test Credentials</Text>
@@ -345,7 +599,6 @@ const LoginScreen = () => {
                     </View>
                 </View>
 
-                {/* Rest of the component remains the same */}
                 <View style={styles.signupSection}>
                     <Text style={styles.signupText}>Don't have an account?</Text>
                     <TouchableOpacity>
@@ -379,9 +632,8 @@ const LoginScreen = () => {
     );
 };
 
-// Styles tetap sama
+// ✅ TAMBAHKAN STYLES UNTUK BIOMETRIC SECTION YANG DINAMIS
 const styles = StyleSheet.create({
-    // ... semua styles tetap sama seperti sebelumnya
     container: {
         flex: 1,
         backgroundColor: '#f8f9fa',
@@ -409,6 +661,118 @@ const styles = StyleSheet.create({
         color: '#e8f5e9',
         textAlign: 'center',
         opacity: 0.9,
+    },
+    // ✅ BIOMETRIC SECTION STYLES
+    biometricSection: {
+        margin: 16,
+        marginBottom: 8,
+    },
+    biometricDescription: {
+        fontSize: 14,
+        color: '#666',
+        textAlign: 'center',
+        marginBottom: 12,
+        fontStyle: 'italic',
+    },
+    biometricButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#e8f5e9',
+        borderWidth: 2,
+        borderColor: '#2e7d32',
+        padding: 16,
+        borderRadius: 12,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 3.84,
+    },
+    biometricButtonDisabled: {
+        backgroundColor: '#f5f5f5',
+        borderColor: '#ccc',
+    },
+    biometricButtonText: {
+        color: '#2e7d32',
+        fontSize: 16,
+        fontWeight: 'bold',
+        marginLeft: 12,
+    },
+    biometricButtonTextDisabled: {
+        color: '#999',
+    },
+    enableBiometricButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#2e7d32',
+        padding: 14,
+        borderRadius: 8,
+        margin: 24,
+        marginBottom: 8,
+        elevation: 2,
+    },
+    enableBiometricButtonText: {
+        color: '#ffffff',
+        fontSize: 14,
+        fontWeight: '600',
+        marginLeft: 8,
+    },
+    // SECURITY STYLES
+    securityAlert: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#ffebee',
+        borderLeftWidth: 4,
+        borderLeftColor: '#d32f2f',
+        padding: 16,
+        margin: 16,
+        marginBottom: 8,
+        borderRadius: 8,
+    },
+    securityTextContainer: {
+        flex: 1,
+        marginLeft: 12,
+    },
+    securityTitle: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#d32f2f',
+        marginBottom: 4,
+    },
+    securityMessage: {
+        fontSize: 14,
+        color: '#d32f2f',
+        lineHeight: 18,
+    },
+    countdownText: {
+        fontSize: 12,
+        color: '#d32f2f',
+        fontWeight: '600',
+        marginTop: 4,
+        fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    },
+    permanentLockoutInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#ffebee',
+        padding: 12,
+        margin: 16,
+        marginBottom: 8,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#d32f2f',
+    },
+    permanentLockoutText: {
+        fontSize: 14,
+        color: '#d32f2f',
+        fontWeight: '500',
+        marginLeft: 8,
     },
     form: {
         padding: 24,
