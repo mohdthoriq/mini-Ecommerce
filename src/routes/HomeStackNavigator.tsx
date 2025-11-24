@@ -8,6 +8,7 @@ import LoginScreen from '../screens/auth/Login';
 import TestErrorScreen from '../screens/auth/TestErrorScreen';
 import KTPUploadScreen from '../components/KTPUploadScreen';
 import BiometricSetupScreen from '../screens/auth/BiometricSetupScreen';
+import CourierTrackingScreen from '../screens/auth/CourierTrackingScreen';
 
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
@@ -58,6 +59,15 @@ const HomeStackNavigator = () => {
         options={{
           title: 'KTPupload',
           headerShown: true,
+        }}
+      />
+
+      <Stack.Screen
+        name="CourierTracking"
+        component={CourierTrackingScreen}
+        options={{
+          title: 'Lacak Kurir',
+          headerShown: false // Karena kita pakai custom header
         }}
       />
 

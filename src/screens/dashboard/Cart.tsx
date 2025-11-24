@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View,
     Text,
@@ -9,6 +9,7 @@ import {
     Alert,
     TextInput,
     ActivityIndicator,
+    RefreshControl,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -34,16 +35,27 @@ const CartScreen = () => {
         isCartLoading,
         lastCartError
     } = useCart();
+    
     const [loading, setLoading] = useState(false);
     const [couponCode, setCouponCode] = useState('');
     const [appliedCoupon, setAppliedCoupon] = useState(false);
     const [pollingCount, setPollingCount] = useState(0);
     const [lastUpdate, setLastUpdate] = useState<string>('Just now');
     const [connectionType, setConnectionType] = useState<string | null>(null);
+    
+    // ✅ FIX: Gunakan ref untuk mencegah infinite loop
+    const isMountedRef = useRef(true);
+    const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const refreshCartRef = useRef(refreshCart);
 
-    // ✅ Effect untuk handle cart errors
+    // ✅ FIX: Update ref ketika refreshCart berubah
     useEffect(() => {
-        if (lastCartError) {
+        refreshCartRef.current = refreshCart;
+    }, [refreshCart]);
+
+    // ✅ FIX: Effect untuk handle cart errors - HANYA ketika lastCartError berubah
+    useEffect(() => {
+        if (lastCartError && isMountedRef.current) {
             Alert.alert(
                 'Cart Error',
                 lastCartError,
@@ -64,40 +76,49 @@ const CartScreen = () => {
                 ]
             );
         }
-    }, [lastCartError]);
+    }, [lastCartError]); // ✅ HANYA lastCartError sebagai dependency
 
-    // ✅ POLLING IMPLEMENTATION dengan optimasi bandwidth
-    useEffect(() => {
-        let intervalId: NodeJS.Timeout;
+    // ✅ FIX: Optimized polling implementation dengan cleanup yang proper
+    const startPolling = useCallback(() => {
+        console.log('🔄 Starting cart polling...');
+        
+        // Clear existing interval terlebih dahulu
+        if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+        }
 
-        const startPolling = () => {
-            console.log('🔄 Starting cart polling...');
-            intervalId = setInterval(async () => {
-                try {
-                    console.log('📡 Polling cart data...');
-                    await refreshCart(); // Panggil API untuk refresh data cart
-                    setPollingCount(prev => prev + 1);
-                    setLastUpdate(new Date().toLocaleTimeString());
-
-                    console.log('✅ Cart data updated via polling');
-                } catch (error) {
-                    console.error('❌ Polling error:', error);
-                }
-            }, 15000); // Poll setiap 15 detik
-        };
-
-        const stopPolling = () => {
-            console.log('🛑 Stopping cart polling');
-            if (intervalId) {
-                clearInterval(intervalId);
+        pollingIntervalRef.current = setInterval(async () => {
+            if (!isMountedRef.current) return;
+            
+            try {
+                console.log('📡 Polling cart data...');
+                await refreshCartRef.current(); // Gunakan ref, bukan function langsung
+                setPollingCount(prev => prev + 1);
+                setLastUpdate(new Date().toLocaleTimeString());
+                console.log('✅ Cart data updated via polling');
+            } catch (error) {
+                console.error('❌ Polling error:', error);
             }
-        };
+        }, 30000); // ✅ UBAH: Poll setiap 30 detik (bukan 15 detik) untuk mengurangi beban
+    }, []);
 
-        // Subscribe to network info changes
+    const stopPolling = useCallback(() => {
+        console.log('🛑 Stopping cart polling');
+        if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+        }
+    }, []);
+
+    // ✅ FIX: Network effect yang terpisah dan lebih aman
+    useEffect(() => {
+        isMountedRef.current = true;
+
         const unsubscribeNetInfo = NetInfo.addEventListener(state => {
+            if (!isMountedRef.current) return;
+
             const newConnectionType = state.type;
             setConnectionType(newConnectionType);
-
             console.log('🌐 Connection type changed:', newConnectionType);
 
             // ✅ OPTIMASI BANDWIDTH: Hentikan polling jika jaringan seluler
@@ -106,23 +127,26 @@ const CartScreen = () => {
                 stopPolling();
             } else if (newConnectionType === 'wifi' || newConnectionType === 'unknown') {
                 console.log('📶 WiFi or unknown network - starting polling');
-                stopPolling(); // Stop dulu untuk menghindari duplicate intervals
+                stopPolling();
                 startPolling();
             }
         });
 
-        // Start polling initially
-        startPolling();
+        // Start polling initially hanya jika bukan cellular
+        if (connectionType !== 'cellular') {
+            startPolling();
+        }
 
         // Cleanup function
         return () => {
             console.log('🧹 Cleaning up polling interval');
+            isMountedRef.current = false;
             stopPolling();
             unsubscribeNetInfo();
         };
-    }, [refreshCart]);
+    }, [startPolling, stopPolling]); // ✅ FIX: Dependencies yang stabil
 
-    // ✅ Optimized quantity update dengan error handling
+    // ✅ FIX: Optimized quantity update dengan error handling
     const handleUpdateQuantity = async (productId: string, newQuantity: number) => {
         try {
             await updateQuantity(productId, newQuantity);
@@ -131,7 +155,7 @@ const CartScreen = () => {
         }
     };
 
-    // ✅ Optimized remove item dengan error handling
+    // ✅ FIX: Optimized remove item dengan error handling
     const handleRemoveItem = async (itemId: string) => {
         Alert.alert(
             'Remove Item',
@@ -153,7 +177,7 @@ const CartScreen = () => {
         );
     };
 
-    // ✅ Handle clear cart dengan confirmation
+    // ✅ FIX: Handle clear cart dengan confirmation
     const handleClearCart = async () => {
         Alert.alert(
             'Clear Cart',
@@ -176,7 +200,7 @@ const CartScreen = () => {
         );
     };
 
-    // ✅ Function untuk manual refresh dengan error handling
+    // ✅ FIX: Function untuk manual refresh dengan error handling
     const handleManualRefresh = async () => {
         if (connectionType === 'cellular') {
             Alert.alert(
@@ -199,7 +223,7 @@ const CartScreen = () => {
         }
     };
 
-    // ✅ Refresh cart function dengan error handling
+    // ✅ FIX: Refresh cart function dengan error handling
     const handleRefreshCart = async () => {
         try {
             setLoading(true);
@@ -255,7 +279,7 @@ const CartScreen = () => {
             return;
         }
 
-        // Navigate to checkout with all cart items
+        // Navigate to checkout dengan data cart
         navigation.navigate('CheckoutModal', {
             cartItems,
             subtotal: getSubtotal(),
@@ -270,7 +294,7 @@ const CartScreen = () => {
         navigation.goBack();
     };
 
-    // ✅ Tampilkan status error banner
+    // ✅ FIX: Tampilkan status error banner
     const renderErrorBanner = () => {
         if (!lastCartError) return null;
 
@@ -288,7 +312,7 @@ const CartScreen = () => {
         );
     };
 
-    // ✅ Tampilkan status polling dan koneksi
+    // ✅ FIX: Tampilkan status polling dan koneksi
     const renderPollingStatus = () => (
         <View style={styles.pollingStatus}>
             <View style={styles.statusRow}>
@@ -315,7 +339,7 @@ const CartScreen = () => {
         </View>
     );
 
-    // ✅ Loading state untuk cart operations
+    // ✅ FIX: Loading state untuk cart operations
     if (isCartLoading && cartItems.length === 0) {
         return (
             <View style={styles.loadingContainer}>
@@ -586,9 +610,7 @@ const CartScreen = () => {
     );
 };
 
-// Tambahkan RefreshControl import
-import { RefreshControl } from 'react-native';
-
+// Styles tetap sama seperti sebelumnya...
 const styles = StyleSheet.create({
     container: {
         flex: 1,

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
     View,
     Text,
@@ -11,36 +12,212 @@ import {
     Modal,
     KeyboardAvoidingView,
     Platform,
+    Linking,
+    PermissionsAndroid,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { HomeStackParamList, CartItem, Product } from '../../types';
 import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 import { simplePrompt } from '../../utils/simplePrompt';
+import Geolocation from '@react-native-community/geolocation';
+import { Animated, Easing } from 'react-native';
 
 type ModalCheckoutNavigationProp = NativeStackNavigationProp<HomeStackParamList, 'CheckoutModal'>;
 
-// Mock Axios Interceptor
-const setupAxiosInterceptor = () => {
-  return {
-    intercept: (callback: (errors: FormErrors) => void) => {
-      console.log('🛡️ Axios Response Interceptor configured');
+// Fungsi untuk request permission lokasi
+const requestLocationPermission = async (): Promise<boolean> => {
+    if (Platform.OS !== 'android') {
+        return true;
     }
-  };
+
+    try {
+        const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+            {
+                title: 'Izin Akses Lokasi',
+                message: 'Kami butuh lokasi Anda untuk menghitung ongkir secara akurat.',
+                buttonNeutral: 'Tanya Nanti',
+                buttonNegative: 'Tolak',
+                buttonPositive: 'Izinkan',
+            }
+        );
+
+        return granted === PermissionsAndroid.RESULTS.GRANTED;
+    } catch (err) {
+        console.warn('Error requesting location permission:', err);
+        return false;
+    }
 };
 
-// Type untuk form errors (disederhanakan)
+// Mock Axios Interceptor
+const setupAxiosInterceptor = () => {
+    return {
+        intercept: (callback: (errors: FormErrors) => void) => {
+            console.log('🛡️ Axios Response Interceptor configured');
+        }
+    };
+};
+
+// Type untuk form errors
 interface FormErrors {
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  phone?: string;
-  cardNumber?: string;
-  expiryDate?: string;
-  cvv?: string;
-  cardholderName?: string;
-  general?: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+    cardNumber?: string;
+    expiryDate?: string;
+    cvv?: string;
+    cardholderName?: string;
+    general?: string;
 }
+
+// Fungsi untuk mendapatkan lokasi
+const getCurrentLocation = (): Promise<{ latitude: number; longitude: number }> => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const hasPermission = await requestLocationPermission();
+            if (!hasPermission) {
+                reject(new Error('LOCATION_PERMISSION_DENIED'));
+                return;
+            }
+
+            console.log('📍 Mencoba mendapatkan lokasi...');
+
+            Geolocation.getCurrentPosition(
+                (position) => {
+                    const { latitude, longitude } = position.coords;
+                    console.log('✅ Lokasi berhasil didapatkan:', { latitude, longitude });
+                    resolve({ latitude, longitude });
+                },
+                (error) => {
+                    console.error('❌ Error mendapatkan lokasi:', error);
+                    let errorType = 'UNKNOWN_ERROR';
+
+                    switch (error.code) {
+                        case 1:
+                            errorType = 'PERMISSION_DENIED';
+                            break;
+                        case 2:
+                            errorType = 'POSITION_UNAVAILABLE';
+                            break;
+                        case 3:
+                            errorType = 'TIMEOUT';
+                            break;
+                    }
+                    reject(new Error(errorType));
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 15000,
+                    maximumAge: 60000,
+                }
+            );
+        } catch (error) {
+            reject(error);
+        }
+    });
+};
+
+// Fungsi untuk menghitung ongkir
+const calculateShippingCost = async (): Promise<{ cost: number; usedFallback: boolean; message?: string }> => {
+    try {
+        console.log('🚚 Menghitung ongkir berdasarkan lokasi...');
+        const location = await getCurrentLocation();
+        console.log('📍 Lokasi user:', location);
+
+        const baseCost = 4.99;
+        const distanceMultiplier = Math.random() * 2 + 0.5;
+        const shippingCost = baseCost * distanceMultiplier;
+
+        return {
+            cost: parseFloat(shippingCost.toFixed(2)),
+            usedFallback: false
+        };
+
+    } catch (error: any) {
+        console.error('❌ Gagal menghitung ongkir:', error.message);
+        return {
+            cost: 4.99,
+            usedFallback: true,
+            message: 'Menggunakan tarif ongkir standar.'
+        };
+    }
+};
+
+const SpinningIcon = ({ size = 16, color = '#fff' }) => {
+    const spinAnim = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        Animated.loop(
+            Animated.timing(spinAnim, {
+                toValue: 1,
+                duration: 900,
+                easing: Easing.linear,
+                useNativeDriver: true,
+            }),
+        ).start();
+    }, []);
+
+    const rotate = spinAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['0deg', '360deg'],
+    });
+
+    return (
+        <Animated.View style={{ transform: [{ rotate }] }}>
+            <FontAwesome6 name="spinner" size={size} color={color} iconStyle='solid' />
+        </Animated.View>
+    );
+};
+
+// Komponen InputField yang di-memoize untuk prevent re-render
+const InputField = React.memo(({
+    label,
+    value,
+    placeholder,
+    keyboardType = 'default',
+    required = false,
+    secureTextEntry = false,
+    error,
+    onChangeText,
+    autoCapitalize = 'none'
+}: {
+    label: string;
+    value: string;
+    placeholder: string;
+    keyboardType?: any;
+    required?: boolean;
+    secureTextEntry?: boolean;
+    error?: string;
+    onChangeText: (text: string) => void;
+    autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+}) => {
+    return (
+        <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>
+                {label} {required && <Text style={styles.required}>*</Text>}
+            </Text>
+            <TextInput
+                style={[
+                    styles.textInput,
+                    (!value && required) && styles.inputError,
+                    error && styles.inputError
+                ]}
+                placeholder={placeholder}
+                placeholderTextColor="#8a8a8a"
+                value={value}
+                onChangeText={onChangeText}
+                keyboardType={keyboardType}
+                secureTextEntry={secureTextEntry}
+                autoCapitalize={autoCapitalize}
+            />
+            {error && (
+                <Text style={styles.errorText}>{error}</Text>
+            )}
+        </View>
+    );
+});
 
 const CheckoutModalScreen = () => {
     const navigation = useNavigation<ModalCheckoutNavigationProp>();
@@ -49,34 +226,34 @@ const CheckoutModalScreen = () => {
     type ShippingMethod = 'standard' | 'express' | 'priority';
     type PaymentMethod = 'credit_card' | 'paypal' | 'apple_pay';
 
+    // Pisahkan state untuk mencegah re-render berlebihan
     const [shippingMethod, setShippingMethod] = useState<ShippingMethod>('standard');
     const [isProcessing, setIsProcessing] = useState(false);
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('credit_card');
+    const [isCalculatingShipping, setIsCalculatingShipping] = useState(false);
+    const [shippingCalculationMessage, setShippingCalculationMessage] = useState<string>('');
 
-    // State untuk form data yang disederhanakan
-    const [formData, setFormData] = useState({
-        // Contact Information saja
-        firstName: '',
-        lastName: '',
-        email: '',
-        phone: '',
+    // Pisahkan state per field untuk optimasi performance
+    const [firstName, setFirstName] = useState('');
+    const [lastName, setLastName] = useState('');
+    const [email, setEmail] = useState('');
+    const [phone, setPhone] = useState('');
+    const [cardNumber, setCardNumber] = useState('');
+    const [expiryDate, setExpiryDate] = useState('');
+    const [cvv, setCvv] = useState('');
+    const [cardholderName, setCardholderName] = useState('');
 
-        // Payment Information (untuk credit card)
-        cardNumber: '',
-        expiryDate: '',
-        cvv: '',
-        cardholderName: '',
-    });
-
-    // State untuk form errors dari server
+    // State untuk form errors
     const [formErrors, setFormErrors] = useState<FormErrors>({});
 
     // Terima data dari route
-    const { cartItems, subtotal = 0, discount = 0, shippingFee = 0, tax = 0, total = 0 } = (route.params as HomeStackParamList['CheckoutModal']) || {};
+    const { cartItems, subtotal = 0, discount = 0, tax = 0 } = (route.params as HomeStackParamList['CheckoutModal']) || {};
 
     const [checkoutItems, setCheckoutItems] = useState<CartItem[]>(cartItems || []);
+    const [shippingFee, setShippingFee] = useState<number>(4.99);
+    const [total, setTotal] = useState<number>(subtotal + 4.99 + tax);
 
-    // Setup Axios Interceptor ketika komponen mount
+    // Setup Axios Interceptor - pake useCallback untuk prevent re-render
     React.useEffect(() => {
         const interceptor = setupAxiosInterceptor();
         interceptor.intercept((errors: FormErrors) => {
@@ -86,13 +263,14 @@ const CheckoutModalScreen = () => {
         });
     }, []);
 
+    // Hitung ulang total - optimasi dependency array
+    React.useEffect(() => {
+        const newTotal = subtotal + shippingFee + tax;
+        setTotal(newTotal);
+    }, [subtotal, shippingFee, tax]);
+
     const getShippingFee = (): number => {
-        const fees: Record<ShippingMethod, number> = {
-            standard: 4.99,
-            express: 14.99,
-            priority: 24.99
-        };
-        return fees[shippingMethod];
+        return shippingFee;
     };
 
     const getShippingTime = (): string => {
@@ -104,77 +282,88 @@ const CheckoutModalScreen = () => {
         return times[shippingMethod];
     };
 
-    // Validasi form yang disederhanakan
+    // Fungsi untuk menghitung ongkir - pake useCallback
+    const handleCalculateShipping = useCallback(async () => {
+        try {
+            setIsCalculatingShipping(true);
+            setShippingCalculationMessage('');
+
+            const result = await calculateShippingCost();
+            setShippingFee(result.cost);
+
+            if (result.usedFallback && result.message) {
+                setShippingCalculationMessage(result.message);
+            } else {
+                setShippingCalculationMessage(`Ongkir berhasil dihitung berdasarkan lokasi Anda: $${result.cost.toFixed(2)}`);
+            }
+
+        } catch (error: any) {
+            console.error('❌ Gagal menghitung ongkir:', error);
+            setShippingCalculationMessage('Gagal menghitung ongkir. Menggunakan tarif standar.');
+        } finally {
+            setIsCalculatingShipping(false);
+        }
+    }, []);
+
+    // Validasi form
     const isFormValid =
-        formData.firstName.trim() &&
-        formData.lastName.trim() &&
-        formData.email.trim() &&
-        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) &&
-        formData.phone.trim() &&
+        firstName.trim() &&
+        lastName.trim() &&
+        email.trim() &&
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) &&
+        phone.trim() &&
         (paymentMethod !== 'credit_card' || (
-            formData.cardNumber.replace(/\s/g, '').length === 16 &&
-            formData.expiryDate.trim() &&
-            formData.cvv.trim() &&
-            formData.cardholderName.trim()
+            cardNumber.replace(/\s/g, '').length === 16 &&
+            expiryDate.trim() &&
+            cvv.trim() &&
+            cardholderName.trim()
         ));
 
-    const handleQuantityChange = (change: number) => {
-        if (checkoutItems.length === 1) {
-            const item = checkoutItems[0];
-            const newQuantity = item.quantity + change;
-            if (newQuantity >= 1 && newQuantity <= (item.product.stock || 10)) {
-                const updatedItems = [{ ...item, quantity: newQuantity }];
-                setCheckoutItems(updatedItems);
-            }
-        }
-    };    
-
-    const formatCardNumber = (text: string) => {
+    // Format functions - pake useCallback
+    const formatCardNumber = useCallback((text: string) => {
         const cleaned = text.replace(/\s/g, '').replace(/\D/g, '');
         const formatted = cleaned.replace(/(\d{4})/g, '$1 ').trim();
         return formatted.slice(0, 19);
-    };
+    }, []);
 
-    const formatExpiryDate = (text: string) => {
+    const formatExpiryDate = useCallback((text: string) => {
         const cleaned = text.replace(/\D/g, '');
         if (cleaned.length >= 2) {
             return cleaned.slice(0, 2) + '/' + cleaned.slice(2, 4);
         }
         return cleaned;
-    };
+    }, []);
 
-    // Simulasi API call
-    const mockApiCall = async (): Promise<{ success: boolean; errors?: any }> => {
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                const hasError = Math.random() > 0.7;
-                
-                if (hasError) {
-                    resolve({
-                        success: false,
-                        errors: {
-                            firstName: !formData.firstName ? 'First name is required' : undefined,
-                            email: !formData.email ? 'Email is required' : 
-                                  !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) ? 'Invalid email format' : undefined,
-                            cardNumber: paymentMethod === 'credit_card' && !formData.cardNumber ? 'Card number is required' : undefined,
-                        }
-                    });
-                } else {
-                    resolve({ success: true });
-                }
-            }, 2000);
-        });
-    };
+    // Handler functions - pake useCallback
+    const handleCardNumberChange = useCallback((text: string) => {
+        const formatted = formatCardNumber(text);
+        setCardNumber(formatted);
+        if (formErrors.cardNumber) {
+            setFormErrors(prev => ({ ...prev, cardNumber: undefined }));
+        }
+    }, [formatCardNumber, formErrors.cardNumber]);
 
-    /**
-     * Process payment setelah konfirmasi
-     */
+    const handleExpiryDateChange = useCallback((text: string) => {
+        const formatted = formatExpiryDate(text);
+        setExpiryDate(formatted);
+        if (formErrors.expiryDate) {
+            setFormErrors(prev => ({ ...prev, expiryDate: undefined }));
+        }
+    }, [formatExpiryDate, formErrors.expiryDate]);
+
+    const handlePhoneChange = useCallback((text: string) => {
+        const formatted = text.replace(/\D/g, '').slice(0, 15);
+        setPhone(formatted);
+        if (formErrors.phone) {
+            setFormErrors(prev => ({ ...prev, phone: undefined }));
+        }
+    }, [formErrors.phone]);
+
+    // Process payment
     const processPayment = async (): Promise<boolean> => {
         try {
             console.log('💳 Memproses pembayaran...');
-            
             await new Promise(resolve => setTimeout(resolve, 2000));
-            
             const isSuccess = Math.random() > 0.1;
             
             if (isSuccess) {
@@ -189,9 +378,7 @@ const CheckoutModalScreen = () => {
         }
     };
 
-    /**
-     * Handle checkout dengan konfirmasi transfer
-     */
+    // Handle checkout
     const handleCheckoutWithConfirmation = async () => {
         if (!isFormValid) {
             Alert.alert('Informasi Tidak Lengkap', 'Harap lengkapi semua field yang diperlukan.');
@@ -199,8 +386,6 @@ const CheckoutModalScreen = () => {
         }
 
         try {
-            console.log('🔄 Menampilkan konfirmasi transfer...');
-            
             const confirmation = await simplePrompt(
                 `Konfirmasi Transfer Rp ${(total * 15000).toLocaleString('id-ID')}`,
                 {
@@ -212,8 +397,6 @@ const CheckoutModalScreen = () => {
             );
 
             if (confirmation.success) {
-                console.log('✅ User mengkonfirmasi transfer');
-                
                 setIsProcessing(true);
                 
                 try {
@@ -223,11 +406,15 @@ const CheckoutModalScreen = () => {
                         setIsProcessing(false);
                         Alert.alert(
                             '🎉 Pembayaran Berhasil!',
-                            `Terima kasih telah berbelanja!\n\nTotal: $${total.toFixed(2)}\n\nEmail konfirmasi telah dikirim ke ${formData.email}`,
+                            `Terima kasih telah berbelanja!\n\nTotal: $${total.toFixed(2)}\n\nEmail konfirmasi telah dikirim ke ${email}`,
                             [
                                 {
                                     text: 'Lanjutkan Belanja',
-                                    onPress: () => navigation.goBack(),
+                                    onPress: () => (navigation as any).navigate('CourierTracking', {
+                                        orderId: 'ORD-' + Date.now().toString().slice(-6),
+                                        total: total,
+                                        estimatedTime: '30-45 menit'
+                                    })
                                 },
                             ]
                         );
@@ -240,11 +427,7 @@ const CheckoutModalScreen = () => {
                     );
                 }
             } else {
-                console.log('❌ User membatalkan transaksi:', confirmation.message);
-                Alert.alert(
-                    'Transaksi Dibatalkan',
-                    confirmation.message || 'Transaksi telah dibatalkan.'
-                );
+                Alert.alert('Transaksi Dibatalkan', confirmation.message || 'Transaksi telah dibatalkan.');
             }
         } catch (error) {
             console.error('❌ Error dalam proses checkout:', error);
@@ -264,73 +447,6 @@ const CheckoutModalScreen = () => {
         );
     };
 
-    const updateFormData = (field: keyof typeof formData, value: string) => {
-        let formattedValue = value;
-
-        if (field === 'cardNumber') {
-            formattedValue = formatCardNumber(value);
-        } else if (field === 'expiryDate') {
-            formattedValue = formatExpiryDate(value);
-        } else if (field === 'phone') {
-            formattedValue = value.replace(/\D/g, '').slice(0, 15);
-        }
-
-        setFormData(prev => ({
-            ...prev,
-            [field]: formattedValue
-        }));
-
-        if (formErrors[field as keyof FormErrors]) {
-            setFormErrors(prev => ({
-                ...prev,
-                [field]: undefined
-            }));
-        }
-    };
-
-    const InputField = ({
-        label,
-        field,
-        placeholder,
-        keyboardType = 'default',
-        required = false,
-        secureTextEntry = false
-    }: {
-        label: string;
-        field: keyof typeof formData;
-        placeholder: string;
-        keyboardType?: any;
-        required?: boolean;
-        secureTextEntry?: boolean;
-    }) => {
-        const error = formErrors[field as keyof FormErrors];
-        
-        return (
-            <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>
-                    {label} {required && <Text style={styles.required}>*</Text>}
-                </Text>
-                <TextInput
-                    style={[
-                        styles.textInput,
-                        (!formData[field] && required) && styles.inputError,
-                        error && styles.inputError
-                    ]}
-                    placeholder={placeholder}
-                    placeholderTextColor="#8a8a8a"
-                    value={formData[field]}
-                    onChangeText={(value) => updateFormData(field, value)}
-                    keyboardType={keyboardType}
-                    secureTextEntry={secureTextEntry}
-                    autoCapitalize={field === 'email' ? 'none' : 'words'}
-                />
-                {error && (
-                    <Text style={styles.errorText}>{error}</Text>
-                )}
-            </View>
-        );
-    };
-
     return (
         <Modal
             animationType="slide"
@@ -341,6 +457,7 @@ const CheckoutModalScreen = () => {
             <KeyboardAvoidingView
                 style={styles.container}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
             >
                 {/* Header */}
                 <View style={styles.header}>
@@ -361,8 +478,10 @@ const CheckoutModalScreen = () => {
                     style={styles.content}
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={styles.scrollContent}
+                    keyboardShouldPersistTaps="handled" // Penting untuk prevent keyboard close
+                    keyboardDismissMode="none" // Jangan auto dismiss keyboard
                 >
-                    {/* Progress Steps - Disederhanakan */}
+                    {/* Progress Steps */}
                     <View style={styles.progressSteps}>
                         <View style={[styles.step, styles.stepActive]}>
                             <View style={styles.stepNumberActive}>
@@ -414,48 +533,94 @@ const CheckoutModalScreen = () => {
                         ))}
                     </View>
 
-                    {/* Contact Information Saja */}
+                    {/* Contact Information - FIXED dengan state terpisah */}
                     <View style={styles.section}>
                         <Text style={styles.sectionTitle}>Contact Information</Text>
                         <View style={styles.rowInput}>
-                            <View style={[styles.inputGroup, { flex: 1 }]}>
-                                <InputField
-                                    label="First Name"
-                                    field="firstName"
-                                    placeholder="John"
-                                    required
-                                />
-                            </View>
-                            <View style={[styles.inputGroup, { flex: 1 }]}>
-                                <InputField
-                                    label="Last Name"
-                                    field="lastName"
-                                    placeholder="Doe"
-                                    required
-                                />
-                            </View>
+                            <InputField
+                                label="First Name"
+                                value={firstName}
+                                placeholder="John"
+                                required
+                                error={formErrors.firstName}
+                                onChangeText={setFirstName}
+                                autoCapitalize="words"
+                            />
+                            <InputField
+                                label="Last Name"
+                                value={lastName}
+                                placeholder="Doe"
+                                required
+                                error={formErrors.lastName}
+                                onChangeText={setLastName}
+                                autoCapitalize="words"
+                            />
                         </View>
 
                         <InputField
                             label="Email Address"
-                            field="email"
+                            value={email}
                             placeholder="john.doe@example.com"
                             keyboardType="email-address"
                             required
+                            error={formErrors.email}
+                            onChangeText={setEmail}
+                            autoCapitalize="none"
                         />
 
                         <InputField
                             label="Phone Number"
-                            field="phone"
+                            value={phone}
                             placeholder="(555) 123-4567"
                             keyboardType="phone-pad"
                             required
+                            error={formErrors.phone}
+                            onChangeText={handlePhoneChange}
                         />
                     </View>
 
-                    {/* Shipping Method - Tetap ada tapi opsional */}
+                    {/* Shipping Method */}
                     <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Shipping Method</Text>
+                        <View style={styles.shippingHeader}>
+                            <Text style={styles.sectionTitle}>Shipping Method</Text>
+                            <TouchableOpacity
+                                style={[
+                                    styles.calculateShippingButton,
+                                    isCalculatingShipping && styles.calculateShippingButtonDisabled
+                                ]}
+                                onPress={handleCalculateShipping}
+                                disabled={isCalculatingShipping}
+                            >
+                                {isCalculatingShipping ? (
+                                    <SpinningIcon size={14} color="#ffffff" />
+                                ) : (
+                                    <FontAwesome6 name="location-crosshairs" size={14} color="#ffffff" iconStyle='solid' />
+                                )}
+                                <Text style={styles.calculateShippingText}>
+                                    {isCalculatingShipping ? 'Calculating...' : 'Auto Calculate'}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Shipping Calculation Message */}
+                        {shippingCalculationMessage ? (
+                            <View style={[
+                                styles.shippingMessage,
+                                shippingCalculationMessage.includes('berhasil')
+                                    ? styles.shippingMessageSuccess
+                                    : styles.shippingMessageWarning
+                            ]}>
+                                <FontAwesome6
+                                    name={shippingCalculationMessage.includes('berhasil') ? "check" : "info"}
+                                    size={14}
+                                    color="#ffffff"
+                                    iconStyle='solid'
+                                />
+                                <Text style={styles.shippingMessageText}>
+                                    {shippingCalculationMessage}
+                                </Text>
+                            </View>
+                        ) : null}
 
                         {(['standard', 'express', 'priority'] as ShippingMethod[]).map((method) => (
                             <TouchableOpacity
@@ -502,7 +667,6 @@ const CheckoutModalScreen = () => {
                     <View style={styles.section}>
                         <Text style={styles.sectionTitle}>Payment Method</Text>
 
-                        {/* Credit Card Option */}
                         <TouchableOpacity
                             style={[
                                 styles.paymentOption,
@@ -533,7 +697,6 @@ const CheckoutModalScreen = () => {
                             </Text>
                         </TouchableOpacity>
 
-                        {/* PayPal Option */}
                         <TouchableOpacity
                             style={[
                                 styles.paymentOption,
@@ -565,7 +728,6 @@ const CheckoutModalScreen = () => {
                             </Text>
                         </TouchableOpacity>
 
-                        {/* Apple Pay Option */}
                         <TouchableOpacity
                             style={[
                                 styles.paymentOption,
@@ -596,48 +758,6 @@ const CheckoutModalScreen = () => {
                                 Apple Pay
                             </Text>
                         </TouchableOpacity>
-
-                        {/* Credit Card Details */}
-                        {paymentMethod === 'credit_card' && (
-                            <View style={styles.cardDetails}>
-                                <InputField
-                                    label="Cardholder Name"
-                                    field="cardholderName"
-                                    placeholder="John Doe"
-                                    required
-                                />
-
-                                <InputField
-                                    label="Card Number"
-                                    field="cardNumber"
-                                    placeholder="1234 5678 9012 3456"
-                                    keyboardType="numeric"
-                                    required
-                                />
-
-                                <View style={styles.rowInput}>
-                                    <View style={[styles.inputGroup, { flex: 2 }]}>
-                                        <InputField
-                                            label="Expiry Date"
-                                            field="expiryDate"
-                                            placeholder="MM/YY"
-                                            keyboardType="numeric"
-                                            required
-                                        />
-                                    </View>
-                                    <View style={[styles.inputGroup, { flex: 1 }]}>
-                                        <InputField
-                                            label="CVV"
-                                            field="cvv"
-                                            placeholder="123"
-                                            keyboardType="numeric"
-                                            secureTextEntry
-                                            required
-                                        />
-                                    </View>
-                                </View>
-                            </View>
-                        )}
                     </View>
 
                     {/* Order Summary */}
@@ -689,7 +809,7 @@ const CheckoutModalScreen = () => {
                         >
                             {isProcessing ? (
                                 <>
-                                    <FontAwesome6 name="spinner" size={16} color="#ffffff" iconStyle='solid' />
+                                    <SpinningIcon size={14} color="#ffffff" />
                                     <Text style={styles.checkoutButtonText}> Processing Payment...</Text>
                                 </>
                             ) : (
@@ -706,11 +826,11 @@ const CheckoutModalScreen = () => {
     );
 };
 
-// Styles tetap sama
+// Styles dengan tambahan untuk shipping calculation dan message
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor:'#9bf89bff',
+        backgroundColor: '#9bf89bff',
     },
     header: {
         flexDirection: 'row',
@@ -839,6 +959,49 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: '#111827',
         marginBottom: 16,
+    },
+    shippingHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    calculateShippingButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#3b82f6',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 8,
+        gap: 6,
+    },
+    calculateShippingButtonDisabled: {
+        backgroundColor: '#9ca3af',
+    },
+    calculateShippingText: {
+        color: '#ffffff',
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    shippingMessage: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 12,
+        gap: 8,
+    },
+    shippingMessageSuccess: {
+        backgroundColor: '#10b981',
+    },
+    shippingMessageWarning: {
+        backgroundColor: '#f59e0b',
+    },
+    shippingMessageText: {
+        color: '#ffffff',
+        fontSize: 12,
+        fontWeight: '500',
+        flex: 1,
     },
     productCard: {
         flexDirection: 'row',

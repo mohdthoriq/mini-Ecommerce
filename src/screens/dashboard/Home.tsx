@@ -17,6 +17,9 @@ import { AuthContext } from '../../context/AuthContext';
 import { productApi } from '../../services/api/productApi';
 import { Product } from '../../types';
 import NetInfo from '@react-native-community/netinfo';
+import Header from '../../components/Header'; // Import Header component
+import { useCart } from '../../context/CartContext'; // Import useCart untuk cart icon
+import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<HomeStackParamList>;
 
@@ -31,12 +34,40 @@ const HomeScreen = () => {
   const user = authContext?.user || null;
   const logout = authContext?.logout || (() => Promise.resolve());
 
+  // ✅ Gunakan useCart untuk cart icon
+  const { cartItemCount } = useCart();
+
   const [isRefreshing, setRefreshing] = useState(false);
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState<boolean | null>(true);
   const [isNetworkLoading, setNetworkLoading] = useState(false);
+
+  // ✅ Header Right Component untuk cart dan tracking
+  const HeaderRight = () => (
+    <View style={{ flexDirection: 'row', gap: 12 }}>
+      {/* Courier Tracking Icon */}
+      <TouchableOpacity onPress={() => navigation.navigate('CourierTracking')}>
+        <FontAwesome6 name="truck-fast" size={22} color="#ffffff" iconStyle='solid' />
+      </TouchableOpacity>
+
+      {/* Cart Icon */}
+      <TouchableOpacity 
+        style={{ position: 'relative' }} 
+        onPress={() => navigation.navigate('Cart')}
+      >
+        <FontAwesome6 name="cart-shopping" size={22} color="#ffffff" iconStyle='solid' />
+        {cartItemCount > 0 && (
+          <View style={styles.cartBadge}>
+            <Text style={styles.cartBadgeText}>
+              {cartItemCount > 99 ? '99+' : cartItemCount}
+            </Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
 
   const fetchFeaturedProducts = useCallback(async () => {
     try {
@@ -258,209 +289,218 @@ const HomeScreen = () => {
   );
 
   return (
-    <ScrollView
-      style={styles.container}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={onRefresh}
-          colors={['#2e7d32']}
-          tintColor="#2e7d32"
-        />
-      }
-    >
-      {/* Network Status Banner */}
-      <NetworkStatus />
+    <View style={styles.container}>
+      {/* ✅ Header Component */}
+      <Header 
+        title="Eco Shop"
+        showBackButton={false}
+        rightComponent={<HeaderRight />}
+      />
 
-      {/* Hero Section */}
-      <View style={styles.heroSection}>
-        <Text style={styles.heroTitle}>
-          {isAuthenticated ? `Welcome, ${user?.name || 'User'}! 🌱` : 'Welcome to Eco Store! 🌱'}
-        </Text>
-        <Text style={styles.heroSubtitle}>
-          Discover sustainable and eco-friendly products that care for our planet
-        </Text>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={onRefresh}
+            colors={['#2e7d32']}
+            tintColor="#2e7d32"
+          />
+        }
+      >
+        {/* Network Status Banner */}
+        <NetworkStatus />
 
-        {!isAuthenticated ? (
-          <View style={styles.loginPrompt}>
-            <Text style={styles.loginText}>
-              Please login to explore our full catalog and make purchases
-            </Text>
-            <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-              <Text style={styles.loginButtonText}>Login to Get Started</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.welcomePrompt}>
-            <Text style={styles.welcomeText}>
-              Ready to explore eco-friendly products?
-            </Text>
-            <TouchableOpacity
-              style={styles.exploreButton}
-              onPress={handleExploreCategories}
-            >
-              <Text style={styles.exploreButtonText}>Explore Products</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
-
-      {/* Featured Products Section */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Featured Eco Products</Text>
-          <View style={styles.headerRight}>
-            <Text style={styles.refreshHint}>↓ Pull down to refresh</Text>
-          </View>
-        </View>
-        <Text style={styles.sectionSubtitle}>
-          Handpicked sustainable products just for you
-        </Text>
-
-        <TouchableOpacity
-          style={styles.categoriesButton}
-          onPress={handleExploreAllProducts}
-        >
-          <Text style={styles.categoriesButtonText}>
-            Lihat Semua Produk
+        {/* Hero Section */}
+        <View style={styles.heroSection}>
+          <Text style={styles.heroTitle}>
+            {isAuthenticated ? `Welcome, ${user?.name || 'User'}! 🌱` : 'Welcome to Eco Store! 🌱'}
           </Text>
-        </TouchableOpacity>
+          <Text style={styles.heroSubtitle}>
+            Discover sustainable and eco-friendly products that care for our planet
+          </Text>
 
-        {/* Network Loading State */}
-        {isNetworkLoading && renderLoading()}
-
-        {/* Loading State */}
-        {loading && !isRefreshing && !isNetworkLoading && renderLoading()}
-
-        {/* Error State */}
-        {error && !loading && !isNetworkLoading && renderError()}
-
-        {/* Products Grid */}
-        {!loading && !error && !isNetworkLoading && (
-          <View style={styles.productsGrid}>
-            {featuredProducts.map((product) => (
+          {!isAuthenticated ? (
+            <View style={styles.loginPrompt}>
+              <Text style={styles.loginText}>
+                Please login to explore our full catalog and make purchases
+              </Text>
+              <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
+                <Text style={styles.loginButtonText}>Login to Get Started</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.welcomePrompt}>
+              <Text style={styles.welcomeText}>
+                Ready to explore eco-friendly products?
+              </Text>
               <TouchableOpacity
-                key={product.id}
-                style={styles.productCard}
-                onPress={() => handleProductPress(product)}
+                style={styles.exploreButton}
+                onPress={handleExploreCategories}
               >
-                <Image
-                  source={{ uri: product.image }}
-                  style={styles.productImage}
-                  resizeMode="cover"
-                />
-                <View style={styles.productInfo}>
-                  <Text style={styles.productName} numberOfLines={2}>
-                    {product.name}
-                  </Text>
-                  <Text style={styles.productPrice}>${product.price.toLocaleString()}</Text>
+                <Text style={styles.exploreButtonText}>Explore Products</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
 
-                  {/* Badge Container */}
-                  <View style={styles.badgeContainer}>
-                    {product.isNew && (
-                      <View style={styles.newBadge}>
-                        <Text style={styles.newBadgeText}>NEW</Text>
-                      </View>
-                    )}
-                    {product.discount && product.discount > 0 && (
-                      <View style={styles.discountBadge}>
-                        <Text style={styles.discountBadgeText}>{product.discount}% OFF</Text>
-                      </View>
+        {/* Featured Products Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Featured Eco Products</Text>
+            <View style={styles.headerRight}>
+              <Text style={styles.refreshHint}>↓ Pull down to refresh</Text>
+            </View>
+          </View>
+          <Text style={styles.sectionSubtitle}>
+            Handpicked sustainable products just for you
+          </Text>
+
+          <TouchableOpacity
+            style={styles.categoriesButton}
+            onPress={handleExploreAllProducts}
+          >
+            <Text style={styles.categoriesButtonText}>
+              Lihat Semua Produk
+            </Text>
+          </TouchableOpacity>
+
+          {/* Network Loading State */}
+          {isNetworkLoading && renderLoading()}
+
+          {/* Loading State */}
+          {loading && !isRefreshing && !isNetworkLoading && renderLoading()}
+
+          {/* Error State */}
+          {error && !loading && !isNetworkLoading && renderError()}
+
+          {/* Products Grid */}
+          {!loading && !error && !isNetworkLoading && (
+            <View style={styles.productsGrid}>
+              {featuredProducts.map((product) => (
+                <TouchableOpacity
+                  key={product.id}
+                  style={styles.productCard}
+                  onPress={() => handleProductPress(product)}
+                >
+                  <Image
+                    source={{ uri: product.image }}
+                    style={styles.productImage}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.productInfo}>
+                    <Text style={styles.productName} numberOfLines={2}>
+                      {product.name}
+                    </Text>
+                    <Text style={styles.productPrice}>${product.price.toLocaleString()}</Text>
+
+                    {/* Badge Container */}
+                    <View style={styles.badgeContainer}>
+                      {product.isNew && (
+                        <View style={styles.newBadge}>
+                          <Text style={styles.newBadgeText}>NEW</Text>
+                        </View>
+                      )}
+                      {product.discount && product.discount > 0 && (
+                        <View style={styles.discountBadge}>
+                          <Text style={styles.discountBadgeText}>{product.discount}% OFF</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {!isAuthenticated && (
+                      <Text style={styles.loginHint}>Login to view details</Text>
                     )}
                   </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
 
-                  {!isAuthenticated && (
-                    <Text style={styles.loginHint}>Login to view details</Text>
-                  )}
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
+          {/* Empty State */}
+          {!loading && !error && !isNetworkLoading && featuredProducts.length === 0 && (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyIcon}>📦</Text>
+              <Text style={styles.emptyTitle}>No Featured Products</Text>
+              <Text style={styles.emptyText}>
+                Check back later for featured eco products!
+              </Text>
+            </View>
+          )}
+        </View>
 
-        {/* Empty State */}
-        {!loading && !error && !isNetworkLoading && featuredProducts.length === 0 && (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>📦</Text>
-            <Text style={styles.emptyTitle}>No Featured Products</Text>
-            <Text style={styles.emptyText}>
-              Check back later for featured eco products!
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* Categories Preview */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Explore Categories</Text>
-        <Text style={styles.sectionSubtitle}>
-          Discover products by category
-        </Text>
-
-        <TouchableOpacity
-          style={styles.categoriesButton}
-          onPress={handleExploreCategories}
-        >
-          <Text style={styles.categoriesButtonText}>
-            {isAuthenticated ? 'Browse All Categories' : 'Login to Browse Categories'}
+        {/* Categories Preview */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Explore Categories</Text>
+          <Text style={styles.sectionSubtitle}>
+            Discover products by category
           </Text>
-        </TouchableOpacity>
 
-        <View style={styles.categoriesGrid}>
-          <View style={styles.categoryItem}>
-            <Text style={styles.categoryIcon}>📱</Text>
-            <Text style={styles.categoryName}>Electronics</Text>
-          </View>
-          <View style={styles.categoryItem}>
-            <Text style={styles.categoryIcon}>👕</Text>
-            <Text style={styles.categoryName}>Clothing</Text>
-          </View>
-          <View style={styles.categoryItem}>
-            <Text style={styles.categoryIcon}>🍎</Text>
-            <Text style={styles.categoryName}>Food</Text>
-          </View>
-          <View style={styles.categoryItem}>
-            <Text style={styles.categoryIcon}>🚗</Text>
-            <Text style={styles.categoryName}>Automotive</Text>
-          </View>
-        </View>
-      </View>
+          <TouchableOpacity
+            style={styles.categoriesButton}
+            onPress={handleExploreCategories}
+          >
+            <Text style={styles.categoriesButtonText}>
+              {isAuthenticated ? 'Browse All Categories' : 'Login to Browse Categories'}
+            </Text>
+          </TouchableOpacity>
 
-      {/* Benefits Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Why Choose Eco Store?</Text>
-        <View style={styles.benefitsList}>
-          <View style={styles.benefitItem}>
-            <Text style={styles.benefitIcon}>🌍</Text>
-            <View style={styles.benefitText}>
-              <Text style={styles.benefitTitle}>Eco-Friendly</Text>
-              <Text style={styles.benefitDescription}>
-                All products are sustainable and environmentally conscious
-              </Text>
+          <View style={styles.categoriesGrid}>
+            <View style={styles.categoryItem}>
+              <Text style={styles.categoryIcon}>📱</Text>
+              <Text style={styles.categoryName}>Electronics</Text>
             </View>
-          </View>
-          <View style={styles.benefitItem}>
-            <Text style={styles.benefitIcon}>💚</Text>
-            <View style={styles.benefitText}>
-              <Text style={styles.benefitTitle}>Ethical Sourcing</Text>
-              <Text style={styles.benefitDescription}>
-                Products sourced from responsible and ethical suppliers
-              </Text>
+            <View style={styles.categoryItem}>
+              <Text style={styles.categoryIcon}>👕</Text>
+              <Text style={styles.categoryName}>Clothing</Text>
             </View>
-          </View>
-          <View style={styles.benefitItem}>
-            <Text style={styles.benefitIcon}>🚚</Text>
-            <View style={styles.benefitText}>
-              <Text style={styles.benefitTitle}>Fast Delivery</Text>
-              <Text style={styles.benefitDescription}>
-                Quick and carbon-neutral delivery options
-              </Text>
+            <View style={styles.categoryItem}>
+              <Text style={styles.categoryIcon}>🍎</Text>
+              <Text style={styles.categoryName}>Food</Text>
+            </View>
+            <View style={styles.categoryItem}>
+              <Text style={styles.categoryIcon}>🚗</Text>
+              <Text style={styles.categoryName}>Automotive</Text>
             </View>
           </View>
         </View>
-      </View>
-    </ScrollView>
+
+        {/* Benefits Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Why Choose Eco Store?</Text>
+          <View style={styles.benefitsList}>
+            <View style={styles.benefitItem}>
+              <Text style={styles.benefitIcon}>🌍</Text>
+              <View style={styles.benefitText}>
+                <Text style={styles.benefitTitle}>Eco-Friendly</Text>
+                <Text style={styles.benefitDescription}>
+                  All products are sustainable and environmentally conscious
+                </Text>
+              </View>
+            </View>
+            <View style={styles.benefitItem}>
+              <Text style={styles.benefitIcon}>💚</Text>
+              <View style={styles.benefitText}>
+                <Text style={styles.benefitTitle}>Ethical Sourcing</Text>
+                <Text style={styles.benefitDescription}>
+                  Products sourced from responsible and ethical suppliers
+                </Text>
+              </View>
+            </View>
+            <View style={styles.benefitItem}>
+              <Text style={styles.benefitIcon}>🚚</Text>
+              <View style={styles.benefitText}>
+                <Text style={styles.benefitTitle}>Fast Delivery</Text>
+                <Text style={styles.benefitDescription}>
+                  Quick and carbon-neutral delivery options
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </ScrollView>
+    </View>
   );
 };
 
@@ -468,6 +508,28 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#9bf89bff',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  // Cart Badge Styles
+  cartBadge: {
+    position: 'absolute',
+    right: -6,
+    top: -3,
+    backgroundColor: '#ef4444',
+    borderRadius: 8,
+    width: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
+  },
+  cartBadgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   // Network Status Styles
   networkStatus: {

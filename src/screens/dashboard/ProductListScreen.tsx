@@ -10,6 +10,9 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Modal,
+  PermissionsAndroid,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { DrawerNavigationProp } from '@react-navigation/drawer';
@@ -18,8 +21,9 @@ import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 import { useInternet } from '../../context/InternetContext';
 import { useNetworkAwareAction } from '../../hooks/useNetworkAwareAction';
 import { cacheManager } from '../../utils/cachehelper';
-import WishlistButton from '../../routes/WishlistButton'; // ✅ Import WishlistButton
-import { useAuth } from '../../context/AuthContext'; // ✅ Import useAuth untuk cek login
+import WishlistButton from '../../routes/WishlistButton';
+import { useAuth } from '../../context/AuthContext';
+import Geolocation from '@react-native-community/geolocation';
 
 type ProductListScreenNavigationProp = DrawerNavigationProp<RootDrawerParamList, 'ProductList'>;
 
@@ -27,11 +31,57 @@ type ProductListScreenNavigationProp = DrawerNavigationProp<RootDrawerParamList,
 const PRODUCTS_CACHE_KEY = 'products_cache';
 const CATEGORIES_CACHE_KEY = 'categories_cache';
 
+// Toko Utama coordinates (contoh: Jakarta)
+const MAIN_STORE_LAT = -6.2088;
+const MAIN_STORE_LON = 106.8456;
+const PROMO_RADIUS_METERS = 100; // 100 meter
+
+// Fungsi hitung jarak menggunakan Haversine formula
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 6371000; // Radius bumi dalam meter
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c; // Jarak dalam meter
+
+  return distance;
+};
+
+const requestLocationPermission = async () => {
+  if (Platform.OS !== 'android') {
+    return true;
+  }
+
+  try {
+    const granted = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      {
+        title: 'Izin Akses Lokasi',
+        message: 'Kami butuh lokasi Anda untuk menampilkan toko terdekat secara akurat.',
+        buttonNeutral: 'Tanya Nanti',
+        buttonNegative: 'Tolak',
+        buttonPositive: 'Izinkan',
+      }
+    );
+
+    return granted === PermissionsAndroid.RESULTS.GRANTED;
+  } catch (err) {
+    console.warn('Error requesting location permission:', err);
+    return false;
+  }
+};
+
 const ProductListScreen = () => {
   const navigation = useNavigation<ProductListScreenNavigationProp>();
   const { isInternetReachable } = useInternet();
   const { executeIfOnline } = useNetworkAwareAction();
-  const { isAuthenticated } = useAuth(); // ✅ Untuk cek status login
+  const { isAuthenticated } = useAuth();
 
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
@@ -39,6 +89,9 @@ const ProductListScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [sortBy, setSortBy] = useState<'price_asc' | 'price_desc' | 'name' | 'location' | 'nearest'>('name');
+  const [locationFilter, setLocationFilter] = useState('');
 
   // Exponential Backoff State
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +99,12 @@ const ProductListScreen = () => {
   const [maxRetries] = useState(3);
   const [isRetrying, setIsRetrying] = useState(false);
   const [usingCache, setUsingCache] = useState(false);
+
+  // Geofencing State
+  const [watchId, setWatchId] = useState<number | null>(null);
+  const [userLocation, setUserLocation] = useState<{ lat: number, lon: number } | null>(null);
+  const [distanceToStore, setDistanceToStore] = useState<number | null>(null);
+  const [promoShown, setPromoShown] = useState(false);
 
   // Convert API product to our Product interface
   const convertApiProduct = (apiProduct: ApiProduct): Product => {
@@ -65,8 +124,7 @@ const ProductListScreen = () => {
   // Save products to cache
   const saveProductsToCache = async (products: Product[]) => {
     await cacheManager.set(PRODUCTS_CACHE_KEY, products);
-    
-    // Also save categories separately for faster access
+
     const categories = ['all', ...new Set(products.map(product => product.category))];
     await cacheManager.set(CATEGORIES_CACHE_KEY, categories);
   };
@@ -83,22 +141,19 @@ const ProductListScreen = () => {
 
   // Exponential Backoff Delay Calculator
   const getRetryDelay = (attempt: number): number => {
-    return Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+    return Math.pow(2, attempt) * 1000;
   };
 
   // Fetch products from API with Cache-First Strategy
   const fetchProducts = async (isManualRetry: boolean = false, forceRefresh: boolean = false) => {
     try {
-      // Check internet connection before attempting fetch
       if (!isInternetReachable) {
-        // Try to load from cache when offline
         const cachedProducts = await loadProductsFromCache();
         if (cachedProducts && cachedProducts.length > 0) {
           setProducts(cachedProducts);
           setFilteredProducts(cachedProducts);
           setError('Mode offline - menggunakan data cache');
           setUsingCache(true);
-          console.log('📱 Offline mode: Using cached products');
         } else {
           setError('Tidak ada koneksi internet dan tidak ada data cache.');
         }
@@ -107,7 +162,6 @@ const ProductListScreen = () => {
         return;
       }
 
-      // Reset states for new attempt
       if (isManualRetry) {
         setRetryCount(0);
         setError(null);
@@ -117,22 +171,18 @@ const ProductListScreen = () => {
 
       setLoading(true);
 
-      // Cache-First Strategy: Check cache first unless force refresh
       if (!forceRefresh) {
         const cachedProducts = await loadProductsFromCache();
         if (cachedProducts && cachedProducts.length > 0) {
           setProducts(cachedProducts);
           setFilteredProducts(cachedProducts);
           setUsingCache(true);
-          console.log('💾 Using cached products');
-          
-          // Continue to fetch fresh data in background
+
           fetchFreshProducts();
           return;
         }
       }
 
-      // No cache or force refresh - fetch from API
       await fetchFreshProducts();
 
     } catch (err: unknown) {
@@ -143,7 +193,6 @@ const ProductListScreen = () => {
   // Fetch fresh products from API
   const fetchFreshProducts = async () => {
     const currentAttempt = retryCount + 1;
-    console.log(`🔄 Fetch attempt ${currentAttempt}/${maxRetries + 1}`);
 
     try {
       await executeIfOnline(async () => {
@@ -156,7 +205,6 @@ const ProductListScreen = () => {
         const data = await response.json();
 
         if (data && data.products) {
-          // Convert API products to our Product format
           const convertedProducts: Product[] = data.products.map((apiProduct: ApiProduct) =>
             convertApiProduct(apiProduct)
           );
@@ -168,10 +216,7 @@ const ProductListScreen = () => {
           setIsRetrying(false);
           setUsingCache(false);
 
-          // Save to cache
           await saveProductsToCache(convertedProducts);
-
-          console.log('✅ Products loaded successfully and cached');
         }
       }, {
         showAlert: false,
@@ -179,16 +224,14 @@ const ProductListScreen = () => {
       });
 
     } catch (err: unknown) {
-      // If API fails, try to use cache as fallback
       const cachedProducts = await loadProductsFromCache();
       if (cachedProducts && cachedProducts.length > 0) {
         setProducts(cachedProducts);
         setFilteredProducts(cachedProducts);
         setUsingCache(true);
         setError('Gagal memuat data terbaru, menggunakan data cache');
-        console.log('🔄 Fallback to cached data after API failure');
       } else {
-        throw err; // Re-throw if no cache available
+        throw err;
       }
     } finally {
       setLoading(false);
@@ -198,11 +241,8 @@ const ProductListScreen = () => {
 
   // Handle fetch errors
   const handleFetchError = async (err: unknown) => {
-    console.error(`❌ Fetch attempt ${retryCount + 1} failed:`, err);
-
     let errorMessage = 'Unknown error occurred';
 
-    // Handle different error types
     if (err instanceof Error) {
       errorMessage = err.message;
     } else if (typeof err === 'string') {
@@ -211,7 +251,6 @@ const ProductListScreen = () => {
       errorMessage = String((err as any).message);
     }
 
-    // Try cache as fallback
     const cachedProducts = await loadProductsFromCache();
     if (cachedProducts && cachedProducts.length > 0) {
       setProducts(cachedProducts);
@@ -223,7 +262,6 @@ const ProductListScreen = () => {
       return;
     }
 
-    // Handle network-specific errors
     if (errorMessage === 'NO_INTERNET_CONNECTION') {
       setError('Tidak ada koneksi internet. Periksa koneksi Anda.');
       setIsRetrying(false);
@@ -232,38 +270,28 @@ const ProductListScreen = () => {
       return;
     }
 
-    // Check if we should retry (only if we have internet)
     if (retryCount < maxRetries && isInternetReachable) {
       const delay = getRetryDelay(retryCount);
       const nextAttempt = retryCount + 2;
 
-      console.log(`⏳ Retrying in ${delay / 1000}s... (Attempt ${nextAttempt})`);
       setIsRetrying(true);
-
-      // Show temporary error message
       setError(`Gagal memuat produk. Mencoba lagi dalam ${delay / 1000} detik... (${retryCount + 1}/${maxRetries})`);
 
-      // Schedule retry with exponential backoff
       setTimeout(() => {
-        console.log(`🚀 Executing auto-retry ${nextAttempt}`);
         setRetryCount(prev => prev + 1);
       }, delay);
     } else {
-      // Max retries reached or no internet - show permanent error
       setIsRetrying(false);
       if (!isInternetReachable) {
         setError('Tidak ada koneksi internet. Periksa koneksi Anda.');
       } else {
         setError(`Gagal memuat produk setelah ${maxRetries + 1} percobaan. ${errorMessage}`);
       }
-      console.error(`💥 All ${maxRetries + 1} attempts failed`);
     }
   };
 
   // Manual retry function with network check
   const handleManualRetry = () => {
-    console.log('🔄 Manual retry triggered', { isOnline: isInternetReachable });
-
     if (!isInternetReachable) {
       Alert.alert(
         'Tidak Terkoneksi',
@@ -273,7 +301,7 @@ const ProductListScreen = () => {
       return;
     }
 
-    fetchProducts(true, true); // Force refresh on manual retry
+    fetchProducts(true, true);
   };
 
   // Clear cache and refresh
@@ -284,30 +312,112 @@ const ProductListScreen = () => {
     fetchProducts(false, true);
   };
 
-  useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  // Trigger automatic retry when retryCount changes (only if online)
-  useEffect(() => {
-    if (retryCount > 0 && retryCount <= maxRetries && isInternetReachable) {
-      fetchProducts();
+  // Handle nearest store filter
+  const handleNearestStoreFilter = async () => {
+    const hasPermission = await requestLocationPermission();
+    if (hasPermission) {
+      setSortBy('nearest');
+      Alert.alert('Success', 'Mencari toko terdekat berdasarkan lokasi Anda...');
+      // Di sini bisa ditambahkan logika untuk mendapatkan lokasi user dan sorting berdasarkan jarak
+    } else {
+      Alert.alert(
+        'Izin Ditolak',
+        'Tidak dapat menampilkan toko terdekat tanpa izin lokasi. Silakan izinkan akses lokasi di pengaturan.',
+        [{ text: 'OK' }]
+      );
     }
-  }, [retryCount, isInternetReachable]);
+  };
 
-  // Handle network connection recovery
-  useEffect(() => {
-    if (isInternetReachable && error && error.includes('Tidak ada koneksi internet')) {
-      console.log('🌐 Connection recovered, auto-retrying...');
-      setError('Koneksi pulih. Memuat ulang produk...');
-      setTimeout(() => {
-        fetchProducts(true, true);
-      }, 1000);
+
+  const startGeofencing = async () => {
+    const hasPermission = await requestLocationPermission();
+
+    if (!hasPermission) {
+      console.log('Location permission not granted for geofencing');
+      return;
     }
-  }, [isInternetReachable]);
 
-  // Filter products based on search and category
+    // Hentikan tracking sebelumnya jika ada
+    if (watchId !== null) {
+      Geolocation.clearWatch(watchId);
+    }
+
+    try {
+      const id = Geolocation.watchPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          setUserLocation({ lat: latitude, lon: longitude });
+
+          // Hitung jarak ke toko utama
+          const distance = calculateDistance(
+            latitude,
+            longitude,
+            MAIN_STORE_LAT,
+            MAIN_STORE_LON
+          );
+
+          setDistanceToStore(distance);
+
+          console.log(`Jarak ke toko: ${distance.toFixed(2)} meter`);
+
+          // Cek jika dalam radius promo dan belum menampilkan promo
+          if (distance <= PROMO_RADIUS_METERS && !promoShown) {
+            Alert.alert(
+              '🎉 PROMO DEKAT TOKO!',
+              `Anda berada dalam ${distance.toFixed(0)} meter dari Toko Utama! Dapatkan promo spesial sekarang!`,
+              [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    setPromoShown(true);
+                    // Hentikan tracking setelah promo ditampilkan
+                    if (watchId !== null) {
+                      Geolocation.clearWatch(watchId);
+                      setWatchId(null);
+                    }
+                  }
+                }
+              ]
+            );
+          }
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 10000,
+          distanceFilter: 50, // Update setiap 50 meter
+        }
+      );
+
+      setWatchId(id);
+
+    } catch (error) {
+      console.error('Error starting geofencing:', error);
+    }
+  };
+
+  // Stop geofencing
+  const stopGeofencing = () => {
+    if (watchId !== null) {
+      Geolocation.clearWatch(watchId);
+      setWatchId(null);
+    }
+  };
+
+  // Cleanup geofencing ketika component unmount
   useEffect(() => {
+    return () => {
+      if (watchId !== null) {
+        Geolocation.clearWatch(watchId);
+      }
+    };
+  }, [watchId]);
+
+  // Apply filters and sorting
+  const applyFiltersAndSorting = () => {
     let filtered = products;
 
     // Filter by search query
@@ -326,8 +436,91 @@ const ProductListScreen = () => {
       );
     }
 
+    // Filter by location
+    if (locationFilter) {
+      filtered = filtered.filter(product =>
+        product.name.toLowerCase().includes(locationFilter.toLowerCase()) ||
+        product.description.toLowerCase().includes(locationFilter.toLowerCase()) ||
+        product.category.toLowerCase().includes(locationFilter.toLowerCase())
+      );
+    }
+
+    // Sort products
+    filtered = [...filtered].sort((a, b) => {
+      switch (sortBy) {
+        case 'price_asc':
+          return a.price - b.price;
+        case 'price_desc':
+          return b.price - a.price;
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'location':
+          return a.category.localeCompare(b.category);
+        case 'nearest':
+          // Simulasi sorting berdasarkan "jarak" - random untuk demo
+          return Math.random() - 0.5;
+        default:
+          return 0;
+      }
+    });
+
     setFilteredProducts(filtered);
-  }, [searchQuery, selectedCategory, products]);
+    setShowFilterModal(false);
+  };
+
+  // Reset all filters
+  const resetFilters = () => {
+    setSortBy('name');
+    setLocationFilter('');
+    setSearchQuery('');
+    setSelectedCategory('all');
+    setFilteredProducts(products);
+    setShowFilterModal(false);
+  };
+
+  // Handle nearby stores button press
+  const handleNearbyStores = async () => {
+    const hasPermission = await requestLocationPermission();
+    if (hasPermission) {
+      setSearchQuery('toko terdekat');
+      setSortBy('nearest');
+      Alert.alert('Success', 'Mencari toko terdekat...');
+    }
+  };
+
+  // Toggle geofencing
+  const toggleGeofencing = async () => {
+    if (watchId !== null) {
+      stopGeofencing();
+      Alert.alert('Info', 'Promo tracking dihentikan');
+    } else {
+      await startGeofencing();
+      Alert.alert('Info', 'Promo tracking diaktifkan. Anda akan mendapat notifikasi ketika berada dalam 100m dari toko.');
+    }
+  };
+
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  useEffect(() => {
+    if (retryCount > 0 && retryCount <= maxRetries && isInternetReachable) {
+      fetchProducts();
+    }
+  }, [retryCount, isInternetReachable]);
+
+  useEffect(() => {
+    if (isInternetReachable && error && error.includes('Tidak ada koneksi internet')) {
+      setError('Koneksi pulih. Memuat ulang produk...');
+      setTimeout(() => {
+        fetchProducts(true, true);
+      }, 1000);
+    }
+  }, [isInternetReachable]);
+
+  useEffect(() => {
+    applyFiltersAndSorting();
+  }, [searchQuery, selectedCategory, sortBy, locationFilter, products]);
 
   const onRefresh = () => {
     if (!isInternetReachable) {
@@ -344,7 +537,7 @@ const ProductListScreen = () => {
     setError(null);
     setIsRetrying(false);
     setUsingCache(false);
-    fetchProducts(false, true); // Force refresh on pull-to-refresh
+    fetchProducts(false, true);
   };
 
   const handleProductPress = (product: Product) => {
@@ -372,16 +565,14 @@ const ProductListScreen = () => {
     >
       <Image source={{ uri: item.image }} style={styles.productImage} />
 
-      {/* ✅ WISHLIST BUTTON - Position Absolute di atas gambar */}
       <View style={styles.wishlistButtonContainer}>
-        <WishlistButton 
+        <WishlistButton
           product={item}
           size={20}
           style={styles.wishlistButton}
         />
       </View>
 
-      {/* Badge Container untuk NEW dan Discount */}
       <View style={styles.badgeContainer}>
         {item.isNew && (
           <View style={[styles.badge, styles.newBadge]}>
@@ -444,6 +635,146 @@ const ProductListScreen = () => {
         {category.charAt(0).toUpperCase() + category.slice(1)}
       </Text>
     </TouchableOpacity>
+  );
+
+  // Filter Modal Component
+  const FilterModal = () => (
+    <Modal
+      visible={showFilterModal}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setShowFilterModal(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Filter & Sort</Text>
+            <TouchableOpacity onPress={() => setShowFilterModal(false)}>
+              <FontAwesome6 name="xmark" size={20} color="#666" iconStyle='solid' />
+            </TouchableOpacity>
+          </View>
+
+          {/* Geofencing Status */}
+          <View style={styles.geofencingSection}>
+            <Text style={styles.geofencingTitle}>Promo Tracking</Text>
+            <View style={styles.geofencingInfo}>
+              <FontAwesome6
+                name="location-crosshairs"
+                size={16}
+                color={watchId !== null ? "#2e7d32" : "#666"}
+                iconStyle='solid'
+              />
+              <Text style={styles.geofencingText}>
+                Status: {watchId !== null ? 'Aktif' : 'Nonaktif'}
+              </Text>
+            </View>
+            {distanceToStore !== null && (
+              <Text style={styles.distanceText}>
+                Jarak ke toko: {distanceToStore.toFixed(0)} meter
+              </Text>
+            )}
+            <TouchableOpacity
+              style={[
+                styles.geofencingButton,
+                watchId !== null ? styles.geofencingButtonActive : styles.geofencingButtonInactive
+              ]}
+              onPress={toggleGeofencing}
+            >
+              <Text style={styles.geofencingButtonText}>
+                {watchId !== null ? 'Hentikan Tracking' : 'Aktifkan Promo Tracking'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Sort Options */}
+          <View style={styles.filterSection}>
+            <Text style={styles.filterSectionTitle}>Urut Berdasarkan</Text>
+            <TouchableOpacity
+              style={[
+                styles.filterOption,
+                sortBy === 'name' && styles.filterOptionSelected
+              ]}
+              onPress={() => setSortBy('name')}
+            >
+              <Text style={[
+                styles.filterOptionText,
+                sortBy === 'name' && styles.filterOptionTextSelected
+              ]}>Nama A-Z</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterOption,
+                sortBy === 'price_asc' && styles.filterOptionSelected
+              ]}
+              onPress={() => setSortBy('price_asc')}
+            >
+              <Text style={[
+                styles.filterOptionText,
+                sortBy === 'price_asc' && styles.filterOptionTextSelected
+              ]}>Harga Terendah</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterOption,
+                sortBy === 'price_desc' && styles.filterOptionSelected
+              ]}
+              onPress={() => setSortBy('price_desc')}
+            >
+              <Text style={[
+                styles.filterOptionText,
+                sortBy === 'price_desc' && styles.filterOptionTextSelected
+              ]}>Harga Tertinggi</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterOption,
+                sortBy === 'location' && styles.filterOptionSelected
+              ]}
+              onPress={() => setSortBy('location')}
+            >
+              <Text style={[
+                styles.filterOptionText,
+                sortBy === 'location' && styles.filterOptionTextSelected
+              ]}>Lokasi</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterOption,
+                sortBy === 'nearest' && styles.filterOptionSelected
+              ]}
+              onPress={handleNearestStoreFilter}
+            >
+              <View style={styles.nearestStoreOption}>
+                <FontAwesome6 name="location-crosshairs" size={14} color={sortBy === 'nearest' ? '#ffffff' : '#666'} iconStyle='solid' />
+                <Text style={[
+                  styles.filterOptionText,
+                  sortBy === 'nearest' && styles.filterOptionTextSelected,
+                  styles.nearestStoreText
+                ]}>
+                  Toko Terdekat
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          {/* Action Buttons */}
+          <View style={styles.modalActions}>
+            <TouchableOpacity
+              style={styles.resetButton}
+              onPress={resetFilters}
+            >
+              <Text style={styles.resetButtonText}>Reset</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.applyButton}
+              onPress={applyFiltersAndSorting}
+            >
+              <Text style={styles.applyButtonText}>Terapkan</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 
   // Show permanent error UI after all retries failed or no internet
@@ -548,7 +879,20 @@ const ProductListScreen = () => {
         </View>
       )}
 
-      {/* Search Bar */}
+      {/* Geofencing Status Banner */}
+      {watchId !== null && (
+        <View style={styles.geofencingBanner}>
+          <FontAwesome6 name="location-arrow" size={14} color="#ffffff" iconStyle='solid' />
+          <Text style={styles.geofencingBannerText}>
+            Promo tracking aktif - {distanceToStore ? `${distanceToStore.toFixed(0)}m dari toko` : 'Mencari lokasi...'}
+          </Text>
+          <TouchableOpacity onPress={stopGeofencing} style={styles.stopTrackingButton}>
+            <Text style={styles.stopTrackingText}>Stop</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Search Bar dengan Filter Button */}
       <View style={[
         styles.searchContainer,
         !isInternetReachable && styles.searchContainerOffline
@@ -567,6 +911,22 @@ const ProductListScreen = () => {
             <FontAwesome6 name="xmark" size={16} color="#666" iconStyle='solid' />
           </TouchableOpacity>
         ) : null}
+
+        {/* Nearby Stores Button */}
+        <TouchableOpacity
+          style={styles.nearbyButton}
+          onPress={handleNearbyStores}
+        >
+          <FontAwesome6 name="location-crosshairs" size={16} color="#2e7d32" iconStyle='solid' />
+        </TouchableOpacity>
+
+        {/* Filter Button */}
+        <TouchableOpacity
+          style={styles.filterButton}
+          onPress={() => setShowFilterModal(true)}
+        >
+          <FontAwesome6 name="sliders" size={16} color="#666" iconStyle='solid' />
+        </TouchableOpacity>
       </View>
 
       {/* Categories */}
@@ -587,7 +947,9 @@ const ProductListScreen = () => {
           {filteredProducts.length} products found
           {!isInternetReachable && ' • Offline'}
           {usingCache && ' • Cache'}
-          {isAuthenticated && ' • Login'} {/* ✅ Tampilkan status login */}
+          {isAuthenticated && ' • Login'}
+          {sortBy !== 'name' && ` • ${getSortByText(sortBy)}`}
+          {watchId !== null && ' • Tracking Aktif'}
         </Text>
       </View>
 
@@ -628,8 +990,23 @@ const ProductListScreen = () => {
         }
         contentContainerStyle={styles.productsList}
       />
+
+      {/* Filter Modal */}
+      <FilterModal />
     </View>
   );
+};
+
+// Helper function to display sort by text
+const getSortByText = (sortBy: string) => {
+  switch (sortBy) {
+    case 'price_asc': return 'Harga Terendah';
+    case 'price_desc': return 'Harga Tertinggi';
+    case 'name': return 'Nama A-Z';
+    case 'location': return 'Lokasi';
+    case 'nearest': return 'Toko Terdekat';
+    default: return 'Nama A-Z';
+  }
 };
 
 const styles = StyleSheet.create({
@@ -642,13 +1019,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 8,
     right: 8,
-    zIndex: 10, // Pastikan di atas badge lainnya
+    zIndex: 10,
   },
   wishlistButton: {
-    // Style tambahan untuk wishlist button di product card
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
   },
-
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -749,6 +1124,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
+  geofencingBanner: {
+    backgroundColor: '#2e7d32',
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  geofencingBannerText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 8,
+    flex: 1,
+  },
+  stopTrackingButton: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  stopTrackingText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -772,6 +1173,14 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     fontSize: 16,
     color: '#333',
+  },
+  filterButton: {
+    marginLeft: 8,
+    padding: 4,
+  },
+  nearbyButton: {
+    marginLeft: 8,
+    padding: 4,
   },
   categoriesContainer: {
     marginBottom: 16,
@@ -837,7 +1246,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 8,
     left: 8,
-    gap: 6, // Jarak antar badge
+    gap: 6,
     alignItems: 'flex-start',
   },
   badge: {
@@ -947,6 +1356,146 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     fontWeight: '500',
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  geofencingSection: {
+    backgroundColor: '#f8f9fa',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  geofencingTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 12,
+  },
+  geofencingInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  geofencingText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
+  },
+  distanceText: {
+    fontSize: 14,
+    color: '#2e7d32',
+    fontWeight: '500',
+    marginBottom: 12,
+  },
+  geofencingButton: {
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  geofencingButtonActive: {
+    backgroundColor: '#dc2626',
+  },
+  geofencingButtonInactive: {
+    backgroundColor: '#2e7d32',
+  },
+  geofencingButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  filterSection: {
+    marginBottom: 24,
+  },
+  filterSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  filterOption: {
+    backgroundColor: '#f5f5f5',
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  filterOptionSelected: {
+    backgroundColor: '#2e7d32',
+  },
+  filterOptionText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  filterOptionTextSelected: {
+    color: '#ffffff',
+  },
+  nearestStoreOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  nearestStoreText: {
+    marginLeft: 4,
+  },
+  locationInput: {
+    backgroundColor: '#f5f5f5',
+    padding: 16,
+    borderRadius: 8,
+    fontSize: 14,
+    color: '#333',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+  },
+  resetButton: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+    padding: 16,
+    borderRadius: 8,
+    marginRight: 8,
+    alignItems: 'center',
+  },
+  resetButtonText: {
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '600',
+  },
+  applyButton: {
+    flex: 1,
+    backgroundColor: '#2e7d32',
+    padding: 16,
+    borderRadius: 8,
+    marginLeft: 8,
+    alignItems: 'center',
+  },
+  applyButtonText: {
+    fontSize: 16,
+    color: '#ffffff',
+    fontWeight: '600',
   },
 });
 

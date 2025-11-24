@@ -6,8 +6,6 @@ import LoginScreen from '../screens/auth/Login';
 import CustomDrawerContent from '../components/CustomDrawerContent';
 import BottomTabsNavigator from './BottomTabsNavigator';
 import HomeScreen from '../screens/dashboard/Home';
-import { Text, TouchableOpacity, View } from 'react-native';
-import { useCart } from '../context/CartContext';
 import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 import { useSwipe } from '../context/SwipeContext';
 import { useDrawerLock } from '../hooks/useDrawerLock';
@@ -21,94 +19,24 @@ import AuthGuard from './AuthGuard';
 import TestErrorScreen from '../screens/auth/TestErrorScreen';
 import KTPUploadScreen from '../components/KTPUploadScreen';
 import BiometricSetupScreen from '../screens/auth/BiometricSetupScreen';
-
+import CourierTrackingScreen from '../screens/auth/CourierTrackingScreen';
 
 const Drawer = createDrawerNavigator<RootDrawerParamList>();
 
 const DrawerNavigator = () => {
   const { canSwipe } = useSwipe();
-  const { shouldLockDrawer, drawerLockMode } = useDrawerLock()
-  const { cartItemCount } = useCart();
+  const { shouldLockDrawer } = useDrawerLock();
 
   return (
     <Drawer.Navigator
       drawerContent={(props) => <CustomDrawerContent {...props} />}
-      screenOptions={({ navigation, route }) => {
-
+      screenOptions={({ route }) => {
         const lockedScreens = ['ProductDetail', 'CheckoutModal'];
         const isDrawerLocked = lockedScreens.includes(route.name);
-
-
         const drawerLockMode = shouldLockDrawer ? 'locked-closed' : 'unlocked';
 
         return {
-          headerShown: true,
-          headerTitle: () => (
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 80 }}>
-              <FontAwesome6 name="leaf" size={20} color="#2af310ff" iconStyle='solid' style={{ marginRight: 8 }} />
-              <Text style={{
-                fontSize: 20,
-                fontWeight: 'bold',
-                color: '#ffffff',
-              }}>
-                Eco Shop
-              </Text>
-            </View>
-          ),
-          headerTitleStyle: {
-            fontSize: 20,
-            fontWeight: 'bold',
-            color: '#ffffff',
-            marginLeft: 20,
-          },
-          headerStyle: {
-            backgroundColor: '#2e7d32',
-          },
-          headerTintColor: '#ffffff',
-          headerLeft: () => {
-            const isHomeScreen = route.name === 'Home';
-
-            if (isHomeScreen) {
-              return (
-                <TouchableOpacity
-                  style={{ marginLeft: 16 }}
-                  onPress={() => navigation.toggleDrawer()}
-                >
-                  <FontAwesome6 name="bars" size={24} color="#ffffff" iconStyle='solid' />
-                </TouchableOpacity>
-              );
-            } else {
-              return (
-                <TouchableOpacity
-                  style={{ marginLeft: 16 }}
-                  onPress={() => navigation.goBack()}
-                >
-                  <FontAwesome6 name="arrow-left" size={24} color="#ffffff" iconStyle='solid' />
-                </TouchableOpacity>
-              );
-            }
-          },
-          headerRight: () => (
-            <TouchableOpacity
-              style={{ marginRight: 16, position: 'relative' }}
-              onPress={() => navigation.navigate('Cart')}
-            >
-              <FontAwesome6 name="cart-shopping" size={24} color="#ffffff" iconStyle='solid' />
-              {cartItemCount > 0 && (
-                <View style={{
-                  position: 'absolute', right: -8, top: -4, backgroundColor: '#ef4444', borderRadius: 10, width: 20, height: 20, justifyContent: 'center', alignItems: 'center'
-                }}>
-                  <Text style={{
-                    color: '#ffffff',
-                    fontSize: 12,
-                    fontWeight: 'bold'
-                  }}>
-                    {cartItemCount}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          ),
+          headerShown: false, // Header dihandle oleh masing-masing screen
           drawerStyle: {
             backgroundColor: '#f0f7f0',
             width: 280,
@@ -133,10 +61,10 @@ const DrawerNavigator = () => {
           drawerIcon: ({ color, size }) => (
             <FontAwesome6 name="house" size={size} color={color} iconStyle="solid" />
           ),
+          title: 'Home',
         }}
       />
 
-      {/* Semua screen lain pake AuthGuard */}
       <Drawer.Screen
         name="CategoriesWithBottomTabs"
         options={{
@@ -144,7 +72,6 @@ const DrawerNavigator = () => {
             <FontAwesome6 name="cube" size={size} color={color} iconStyle="solid" />
           ),
           title: 'Categories',
-          headerShown: true,
         }}
       >
         {() => (
@@ -176,12 +103,12 @@ const DrawerNavigator = () => {
           drawerIcon: ({ color, size }) => (
             <FontAwesome6 name="user" size={size} color={color} iconStyle="solid" />
           ),
-          title: '👤 Profile',
+          title: 'Profile',
         }}
       >
         {() => (
           <AuthGuard fallbackToLogin={true}>
-            <ProfileScreen />
+            <BottomTabsNavigator />
           </AuthGuard>
         )}
       </Drawer.Screen>
@@ -190,9 +117,9 @@ const DrawerNavigator = () => {
         name="KTPupload"
         options={{
           drawerIcon: ({ color, size }) => (
-            <FontAwesome6 name="user" size={size} color={color} iconStyle="solid" />
+            <FontAwesome6 name="id-card" size={size} color={color} iconStyle="solid" />
           ),
-          title: '👤 Profile',
+          title: 'KTP Upload',
         }}
       >
         {() => (
@@ -213,7 +140,7 @@ const DrawerNavigator = () => {
       >
         {() => (
           <AuthGuard fallbackToLogin={true}>
-            <AnalyticsHistoryScreen />
+            <BottomTabsNavigator />
           </AuthGuard>
         )}
       </Drawer.Screen>
@@ -222,15 +149,18 @@ const DrawerNavigator = () => {
         name="Login"
         component={LoginScreen}
         options={{
-          title: '🔐 Login',
+          title: 'Login',
           drawerItemStyle: { display: 'none' },
         }}
       />
 
-      {/* Screens yang disembunyi dari drawer, tapi perlu proteksi */}
+      {/* Screens yang disembunyi dari drawer */}
       <Drawer.Screen
         name="ProductDetail"
-        options={{ title: 'Product Details', drawerItemStyle: { display: 'none' } }}
+        options={{ 
+          title: 'Product Details', 
+          drawerItemStyle: { display: 'none' } 
+        }}
       >
         {() => (
           <AuthGuard fallbackToLogin={true}>
@@ -241,7 +171,10 @@ const DrawerNavigator = () => {
 
       <Drawer.Screen
         name="CheckoutModal"
-        options={{ title: 'Checkout', drawerItemStyle: { display: 'none' } }}
+        options={{ 
+          title: 'Checkout', 
+          drawerItemStyle: { display: 'none' } 
+        }}
       >
         {() => (
           <AuthGuard fallbackToLogin={true}>
@@ -251,8 +184,25 @@ const DrawerNavigator = () => {
       </Drawer.Screen>
 
       <Drawer.Screen
+        name="CourierTracking"
+        options={{
+          title: 'Courier Tracking',
+          drawerItemStyle: { display: 'none' }
+        }}
+      >
+        {() => (
+          <AuthGuard fallbackToLogin={true}>
+            <CourierTrackingScreen />
+          </AuthGuard>
+        )}
+      </Drawer.Screen>
+
+      <Drawer.Screen
         name="Cart"
-        options={{ title: 'Shopping Cart', drawerItemStyle: { display: 'none' } }}
+        options={{ 
+          title: 'Shopping Cart', 
+          drawerItemStyle: { display: 'none' } 
+        }}
       >
         {() => (
           <AuthGuard fallbackToLogin={true}>
@@ -263,7 +213,10 @@ const DrawerNavigator = () => {
 
       <Drawer.Screen
         name="ProductList"
-        options={{ title: 'All Products', drawerItemStyle: { display: 'none' } }}
+        options={{ 
+          title: 'All Products', 
+          drawerItemStyle: { display: 'none' } 
+        }}
       >
         {() => (
           <AuthGuard fallbackToLogin={true}>
@@ -294,10 +247,9 @@ const DrawerNavigator = () => {
         component={TestErrorScreen}
         options={{
           title: 'Test Error',
-          drawerItemStyle: { display: 'none' }, // Sembunyikan dari drawer
+          drawerItemStyle: { display: 'none' },
         }}
       />
-
     </Drawer.Navigator>
   );
 };

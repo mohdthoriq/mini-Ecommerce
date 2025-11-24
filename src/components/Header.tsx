@@ -7,17 +7,25 @@ interface HeaderProps {
   title: string;
   showBackButton?: boolean;
   rightComponent?: React.ReactNode;
+  onBack?: () => void; // ✅ Tambah prop onBack custom
 }
 
 const Header: React.FC<HeaderProps> = ({ 
   title, 
   showBackButton = false, 
-  rightComponent 
+  rightComponent,
+  onBack // ✅ Terima prop onBack
 }) => {
   const navigation = useNavigation();
 
   const handleBack = () => {
-    navigation.goBack();
+    if (onBack) {
+      // ✅ Jika ada custom onBack, gunakan itu
+      onBack();
+    } else {
+      // ✅ Default behavior: goBack biasa
+      navigation.goBack();
+    }
   };
 
   const handleMenu = () => {

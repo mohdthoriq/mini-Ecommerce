@@ -11,6 +11,11 @@ export type RootStackParamList = {
   Biometric: undefined;
   Login: undefined;
   KTPupload: undefined;
+  CourierTracking: {
+    orderId?: string;
+    total?: number;
+    estimatedTime?: string;
+  };
 };
 
 export type RootDrawerParamList = {
@@ -29,6 +34,11 @@ export type RootDrawerParamList = {
   ProductDetail: { productId: string }; 
   CheckoutModal: undefined;
   TestError: undefined;
+  CourierTracking: {
+    orderId?: string;
+    total?: number;
+    estimatedTime?: string;
+  };
 };
 
 export type HomeStackParamList = {
@@ -39,6 +49,7 @@ export type HomeStackParamList = {
   Biometric: undefined;
   ProductList: undefined;
   Profile: undefined;
+  CourierTracking: undefined;
   Login: undefined;
   KTPupload: undefined;
   TestError: undefined;

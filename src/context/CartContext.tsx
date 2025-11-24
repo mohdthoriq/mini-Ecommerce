@@ -46,10 +46,10 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartLoading, setIsCartLoading] = useState(false);
   const [lastCartError, setLastCartError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
   const { user } = useAuth();
   const currentUserIdRef = useRef<string | undefined>(undefined);
   const cartItemsRef = useRef<CartItem[]>([]); // ✅ REF UNTUK MENCEGAH INFINITE LOOP
+  const initialLoadRef = useRef(false); // ✅ REF UNTUK CEK LOAD INITIAL
 
   // ✅ UPDATE REF SETIAP CART ITEMS BERUBAH
   useEffect(() => {
@@ -274,27 +274,30 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
   }, [getUserCartStorageKey, handleStorageOptimization, handleQuotaExceeded]);
 
-  // ✅ FIX: Handle user change and cart switching - STABILKAN DEPENDENCIES
+  // ✅ FIX: Handle user change and cart switching - PERBAIKI LOGIC INI
   const handleUserChange = useCallback(async (currentUserId: string | undefined) => {
-    if (currentUserIdRef.current === currentUserId) {
-      return;
-    }
-
+    // ✅ PERBAIKAN: Selalu load cart ketika user berubah, bahkan jika user sama
+    // Ini memastikan data cart selalu fresh dari storage
+    console.log(`🔄 Handling user change: ${currentUserIdRef.current} -> ${currentUserId}`);
+    
     setIsCartLoading(true);
     try {
       // Save current user's cart before switching - GUNAKAN REF BUKAN STATE
       if (currentUserIdRef.current !== undefined && 
           Array.isArray(cartItemsRef.current) && 
           cartItemsRef.current.length > 0) {
+        console.log(`💾 Saving cart for previous user: ${currentUserIdRef.current}`);
         await saveCartToStorage(cartItemsRef.current, currentUserIdRef.current);
       }
 
-      // Load new user's cart
+      // Load new user's cart - SELALU load meskipun user sama
+      console.log(`📥 Loading cart for user: ${currentUserId || 'guest'}`);
       const newUserCart = await loadCartFromStorage(currentUserId);
       setCartItems(newUserCart);
       currentUserIdRef.current = currentUserId;
+      initialLoadRef.current = true;
       
-      console.log(`🔄 Switched cart for user: ${currentUserId || 'guest'}`);
+      console.log(`✅ Switched cart for user: ${currentUserId || 'guest'} with ${newUserCart.length} items`);
     } catch (error) {
       console.error('❌ Failed to switch user cart:', error);
       setLastCartError('Failed to load cart data');
@@ -303,12 +306,16 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
   }, [saveCartToStorage, loadCartFromStorage]);
 
-  // ✅ FIX: Initialize cart on app start and user change - HAPUS CART ITEMS DARI DEPENDENCY
+  // ✅ FIX: Initialize cart on app start and user change - PERBAIKI DEPENDENCY
   useEffect(() => {
-    if (user?.id !== currentUserIdRef.current) {
+    console.log(`👤 User changed: ${user?.id}, Previous: ${currentUserIdRef.current}`);
+    
+    // ✅ PERBAIKAN: Selalu panggil handleUserChange ketika user berubah
+    // Hanya skip jika initialLoadRef masih false (first load)
+    if (!initialLoadRef.current || user?.id !== currentUserIdRef.current) {
       handleUserChange(user?.id);
     }
-  }, [user?.id, handleUserChange]); // ✅ HANYA user.id YANG DI-DEPEND
+  }, [user?.id, handleUserChange]); // ✅ Tambah handleUserChange ke dependency
 
   // ✅ FIX: IMPLEMENTASI FUNGSI ADD TO CART dengan validasi
   const addToCart = async (product: Product, quantity: number = 1): Promise<void> => {
@@ -448,7 +455,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
   };
 
-  // ✅ FIX: IMPLEMENTASI FUNGSI REFRESH CART
+  // ✅ FIX: IMPLEMENTASI FUNGSI REFRESH CART - HANYA MANUAL
   const refreshCart = async (): Promise<void> => {
     try {
       setIsCartLoading(true);
@@ -464,27 +471,6 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       setIsCartLoading(false);
     }
   };
-
-  // ✅ FIX: Auto-save dengan safeStorage - GUNAKAN REF UNTUK CART ITEMS & HAPUS CART ITEMS DARI DEPENDENCY
-  useEffect(() => {
-    const autoSave = async () => {
-      if (isSaving || !Array.isArray(cartItemsRef.current) || cartItemsRef.current.length === 0 || isCartLoading) {
-        return;
-      }
-
-      setIsSaving(true);
-      try {
-        await saveCartToStorage(cartItemsRef.current, user?.id);
-      } catch (error) {
-        console.log('🔄 Auto-save failed (non-critical):', error instanceof Error ? error.message : 'Unknown error');
-      } finally {
-        setIsSaving(false);
-      }
-    };
-
-    const timeoutId = setTimeout(autoSave, 2000);
-    return () => clearTimeout(timeoutId);
-  }, [isCartLoading, isSaving, saveCartToStorage, user?.id]); // ✅ HAPUS CART ITEMS DARI DEPENDENCY
 
   const value: CartContextType = {
     // State

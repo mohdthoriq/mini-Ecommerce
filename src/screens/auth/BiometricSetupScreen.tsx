@@ -17,8 +17,31 @@ import { useNavigation } from '@react-navigation/native';
 import * as Keychain from 'react-native-keychain';
 import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 import { useAuth } from '../../context/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Types
+type FingerprintProfile = {
+  id: string;
+  name: string;
+  finger: string;
+  registeredAt: Date;
+  isActive: boolean;
+};
+
+type BiometricInfo = {
+  isAvailable: boolean;
+  hasCredentials: boolean;
+  type?: string;
+  supportedType?: string;
+  isEnrolled?: boolean;
+};
+
+type FaceIdSupport = {
+  isFaceID: boolean;
+  supportLevel: 'full' | 'basic' | 'none';
+};
 
 const BiometricSetupScreen = () => {
   const navigation = useNavigation();
@@ -37,34 +60,57 @@ const BiometricSetupScreen = () => {
   } = useAuth();
 
   const [isLoading, setIsLoading] = useState(false);
-  const [biometricInfo, setBiometricInfo] = useState<{
-    isAvailable: boolean;
-    hasCredentials: boolean;
-    type?: string;
-    supportedType?: string;
-    isEnrolled?: boolean;
-  }>({
+  const [biometricInfo, setBiometricInfo] = useState<BiometricInfo>({
     isAvailable: false,
     hasCredentials: false,
     isEnrolled: false,
   });
 
-  const [faceIdSupport, setFaceIdSupport] = useState<{
-    isFaceID: boolean;
-    supportLevel: 'full' | 'basic' | 'none';
-  }>({
+  const [faceIdSupport, setFaceIdSupport] = useState<FaceIdSupport>({
     isFaceID: false,
     supportLevel: 'none'
   });
 
+  const [fingerprintProfiles, setFingerprintProfiles] = useState<FingerprintProfile[]>([]);
+  const [maxFingerprints] = useState(3);
+
+  // Effects
   useEffect(() => {
     checkBiometricStatus();
+    loadFingerprintProfiles();
   }, []);
 
   useEffect(() => {
     checkFaceIdSupport();
   }, [biometryType, biometricInfo]);
 
+  // Storage Functions
+  const loadFingerprintProfiles = async () => {
+    try {
+      const storedProfiles = await AsyncStorage.getItem('fingerprint_profiles');
+      if (storedProfiles) {
+        const profiles = JSON.parse(storedProfiles).map((profile: any) => ({
+          ...profile,
+          registeredAt: new Date(profile.registeredAt)
+        }));
+        setFingerprintProfiles(profiles);
+      }
+    } catch (error) {
+      console.error('Error loading fingerprint profiles:', error);
+    }
+  };
+
+  const saveFingerprintProfiles = async (profiles: FingerprintProfile[]) => {
+    try {
+      await AsyncStorage.setItem('fingerprint_profiles', JSON.stringify(profiles));
+      setFingerprintProfiles(profiles);
+    } catch (error) {
+      console.error('Error saving fingerprint profiles:', error);
+      throw error;
+    }
+  };
+
+  // Biometric Functions
   const checkBiometricStatus = async () => {
     try {
       setIsLoading(true);
@@ -219,12 +265,113 @@ const BiometricSetupScreen = () => {
     if (faceIdSupport.isFaceID) {
       return 'Pindai wajah Anda untuk login yang aman dan cepat';
     } else if (biometricInfo.type?.includes('Fingerprint') || biometricInfo.type?.includes('Touch')) {
-      return 'Gunakan sidik jari untuk akses instan ke akun Anda';
+      return `Daftarkan hingga ${maxFingerprints} sidik jari untuk akses instan`;
     } else {
       return 'Gunakan biometrik untuk login yang aman dan praktis';
     }
   };
 
+  // Fingerprint Management
+  const registerFingerprint = async () => {
+    if (fingerprintProfiles.length >= maxFingerprints) {
+      Alert.alert(
+        'Batas Maksimum',
+        `Anda sudah mendaftarkan ${maxFingerprints} sidik jari. Hapus salah satu untuk menambah yang baru.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+
+      Alert.prompt(
+        'Daftar Sidik Jari Baru',
+        'Masukkan nama untuk sidik jari ini (contoh: "Ibu Jari Kanan", "Telunjuk Kiri"):',
+        [
+          {
+            text: 'Batal',
+            style: 'cancel',
+          },
+          {
+            text: 'Lanjut',
+            onPress: async (fingerName: any) => {
+              if (!fingerName || fingerName.trim().length === 0) {
+                Alert.alert('Error', 'Nama sidik jari harus diisi');
+                return;
+              }
+
+              try {
+                const result = await biometricLogin();
+                
+                if (result.success) {
+                  const newProfile: FingerprintProfile = {
+                    id: Date.now().toString(),
+                    name: fingerName.trim(),
+                    finger: `Finger ${fingerprintProfiles.length + 1}`,
+                    registeredAt: new Date(),
+                    isActive: true
+                  };
+
+                  const updatedProfiles = [...fingerprintProfiles, newProfile];
+                  await saveFingerprintProfiles(updatedProfiles);
+
+                  Alert.alert(
+                    'Berhasil!',
+                    `Sidik jari "${fingerName}" berhasil didaftarkan!`,
+                    [{ text: 'OK' }]
+                  );
+                } else {
+                  Alert.alert('Gagal', 'Autentikasi sidik jari gagal. Silakan coba lagi.');
+                }
+              } catch (error) {
+                Alert.alert('Error', 'Gagal mendaftarkan sidik jari. Silakan coba lagi.');
+              } finally {
+                setIsLoading(false);
+              }
+            },
+          },
+        ],
+        'plain-text'
+      );
+
+    } catch (error) {
+      console.error('Error registering fingerprint:', error);
+      Alert.alert('Error', 'Gagal mendaftarkan sidik jari.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const deleteFingerprint = async (profileId: string) => {
+    Alert.alert(
+      'Hapus Sidik Jari',
+      'Apakah Anda yakin ingin menghapus sidik jari ini?',
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Hapus',
+          style: 'destructive',
+          onPress: async () => {
+            const updatedProfiles = fingerprintProfiles.filter(profile => profile.id !== profileId);
+            await saveFingerprintProfiles(updatedProfiles);
+            Alert.alert('Berhasil', 'Sidik jari berhasil dihapus.');
+          }
+        }
+      ]
+    );
+  };
+
+  const toggleFingerprintActive = async (profileId: string) => {
+    const updatedProfiles = fingerprintProfiles.map(profile => 
+      profile.id === profileId 
+        ? { ...profile, isActive: !profile.isActive }
+        : profile
+    );
+    await saveFingerprintProfiles(updatedProfiles);
+  };
+
+  // Biometric Actions
   const handleEnableBiometric = async () => {
     if (!user) {
       Alert.alert('Error', 'Please login first to enable biometric authentication');
@@ -241,7 +388,6 @@ const BiometricSetupScreen = () => {
 
       if (success) {
         await checkBiometricStatus();
-
         const biometricName = faceIdSupport.isFaceID ? 'Face ID' : (biometryType || 'biometric');
 
         Alert.alert(
@@ -322,6 +468,8 @@ const BiometricSetupScreen = () => {
       setIsLoading(true);
 
       await disableBiometric();
+      await AsyncStorage.removeItem('fingerprint_profiles');
+      setFingerprintProfiles([]);
       await checkBiometricStatus();
 
       Alert.alert(
@@ -493,15 +641,15 @@ const BiometricSetupScreen = () => {
     }
   };
 
+  // Components
   const SecurityLockoutDisplay = () => {
     const securityStatus = getSecurityStatus();
 
-    if (!securityLockout && !securityStatus.isPermanentlyLocked) {
-      return null;
-    }
-
     return (
-      <View style={styles.securityAlert}>
+      <View style={[
+        styles.securityAlert,
+        { display: !securityLockout && !securityStatus.isPermanentlyLocked ? 'none' : 'flex' }
+      ]}>
         <FontAwesome6 name="shield" size={20} color="#d32f2f" iconStyle='solid' />
         <View style={styles.securityTextContainer}>
           <Text style={styles.securityTitle}>
@@ -522,10 +670,8 @@ const BiometricSetupScreen = () => {
   };
 
   const FaceIdFeatureCard = () => {
-    if (!faceIdSupport.isFaceID) return null;
-
     return (
-      <View style={styles.faceIdCard}>
+      <View style={[styles.faceIdCard, { display: faceIdSupport.isFaceID ? 'flex' : 'none' }]}>
         <View style={styles.faceIdHeader}>
           <FontAwesome6 name="face-smile" size={24} color="#2e7d32" iconStyle='solid' />
           <Text style={styles.faceIdTitle}>Face ID Ready</Text>
@@ -581,58 +727,61 @@ const BiometricSetupScreen = () => {
   };
 
   const FingerprintFeatureCard = () => {
-    if (faceIdSupport.isFaceID || !biometricInfo.isAvailable) return null;
-
     return (
-      <View style={styles.fingerprintCard}>
+      <View style={[
+        styles.fingerprintCard, 
+        { display: (faceIdSupport.isFaceID || !biometricInfo.isAvailable) ? 'none' : 'flex' }
+      ]}>
         <View style={styles.fingerprintHeader}>
           <FontAwesome6 name="fingerprint" size={24} color="#2196f3" iconStyle='solid' />
-          <Text style={styles.fingerprintTitle}>Fingerprint Ready</Text>
+          <Text style={styles.fingerprintTitle}>Fingerprint System</Text>
           <View style={[styles.badge, { backgroundColor: '#2196f3' }]}>
-            <Text style={styles.badgeText}>SECURE</Text>
+            <Text style={styles.badgeText}>MULTI-USER</Text>
           </View>
         </View>
 
         <Text style={styles.fingerprintDescription}>
-          Fast and reliable fingerprint authentication for quick access to your account
+          Daftarkan hingga {maxFingerprints} sidik jari untuk akses bersama yang aman
         </Text>
 
         <View style={styles.fingerprintFeatures}>
           <View style={styles.featureItem}>
             <FontAwesome6 name="check" size={16} color="#2196f3" iconStyle='solid' />
-            <Text style={[styles.featureText, { color: '#1976d2' }]}>Multiple Finger Support</Text>
+            <Text style={[styles.featureText, { color: '#1976d2' }]}>Hingga {maxFingerprints} Sidik Jari</Text>
           </View>
 
           <View style={styles.featureItem}>
             <FontAwesome6 name="check" size={16} color="#2196f3" iconStyle='solid' />
-            <Text style={[styles.featureText, { color: '#1976d2' }]}>360° Recognition</Text>
+            <Text style={[styles.featureText, { color: '#1976d2' }]}>Kontrol Individu</Text>
           </View>
 
           <View style={styles.featureItem}>
             <FontAwesome6 name="check" size={16} color="#2196f3" iconStyle='solid' />
-            <Text style={[styles.featureText, { color: '#1976d2' }]}>Hardware Encryption</Text>
+            <Text style={[styles.featureText, { color: '#1976d2' }]}>Akses Keluarga</Text>
           </View>
 
           <View style={styles.featureItem}>
             <FontAwesome6 name="check" size={16} color="#2196f3" iconStyle='solid' />
-            <Text style={[styles.featureText, { color: '#1976d2' }]}>Wet Finger Detection</Text>
+            <Text style={[styles.featureText, { color: '#1976d2' }]}>Manajemen Mudah</Text>
           </View>
         </View>
 
         <View style={styles.fingerprintStats}>
           <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: '#2196f3' }]}>99.9%</Text>
-            <Text style={styles.statLabel}>Accuracy</Text>
+            <Text style={[styles.statNumber, { color: '#2196f3' }]}>{fingerprintProfiles.length}</Text>
+            <Text style={styles.statLabel}>Terdaftar</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: '#2196f3' }]}>0.3s</Text>
-            <Text style={styles.statLabel}>Speed</Text>
+            <Text style={[styles.statNumber, { color: '#2196f3' }]}>{maxFingerprints}</Text>
+            <Text style={styles.statLabel}>Maksimal</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: '#2196f3' }]}>⭐️⭐️⭐️⭐️⭐️</Text>
-            <Text style={styles.statLabel}>Reliability</Text>
+            <Text style={[styles.statNumber, { color: '#2196f3' }]}>
+              {fingerprintProfiles.filter(p => p.isActive).length}
+            </Text>
+            <Text style={styles.statLabel}>Aktif</Text>
           </View>
         </View>
       </View>
@@ -644,97 +793,86 @@ const BiometricSetupScreen = () => {
     const hasCredentials = biometricInfo.hasCredentials ?? false;
     const isAvailable = biometricInfo.isAvailable ?? false;
 
-    console.log('Setup Buttons Conditions:', {
-      isFaceID: faceIdSupport.isFaceID,
-      isAvailable,
-      isEnrolled,
-      hasCredentials
-    });
-
-    if (!isAvailable || hasCredentials) return null;
-
-    // Jika belum enrolled di system
-    if (!isEnrolled) {
-      return (
-        <TouchableOpacity
-          style={styles.enrollmentButton}
-          onPress={() => {
-            const biometricName = faceIdSupport.isFaceID ? 'Face ID' : 'Fingerprint';
-            const settingsUrl = Platform.OS === 'ios'
-              ? (faceIdSupport.isFaceID ? 'App-Prefs:FACEID' : 'App-Prefs:TOUCHID_PASSCODE')
-              : 'android.settings.SECURITY_SETTINGS';
-
-            Alert.alert(
-              `Setup ${biometricName} di Perangkat`,
-              `Anda perlu mengatur ${biometricName} di pengaturan perangkat terlebih dahulu sebelum bisa menggunakannya di aplikasi.`,
-              [
-                {
-                  text: 'Buka Pengaturan',
-                  onPress: () => {
-                    if (Platform.OS === 'ios') {
-                      Linking.openURL(settingsUrl);
-                    } else {
-                      Linking.openSettings();
-                    }
-                  }
-                },
-                { text: 'Nanti', style: 'cancel' }
-              ]
-            );
-          }}
-          disabled={isLoading}
-        >
-          <View style={styles.enrollmentButtonContent}>
-            <FontAwesome6 
-              name={faceIdSupport.isFaceID ? "face-smile" : "fingerprint"} 
-              size={24} 
-              color="#ffffff" 
-              iconStyle='solid' 
-            />
-            <View style={styles.enrollmentButtonText}>
-              <Text style={styles.enrollmentButtonMain}>
-                Setup {faceIdSupport.isFaceID ? 'Face ID' : 'Fingerprint'} di Perangkat
-              </Text>
-              <Text style={styles.enrollmentButtonSub}>
-                Atur {faceIdSupport.isFaceID ? 'wajah Anda' : 'sidik jari'} di pengaturan sistem terlebih dahulu
-              </Text>
-            </View>
-            <FontAwesome6 name="link" size={16} color="#ffffff" iconStyle='solid' />
-          </View>
-        </TouchableOpacity>
-      );
-    }
-
-    // Jika sudah enrolled, tampilkan button setup untuk aplikasi
     return (
-      <TouchableOpacity
-        style={faceIdSupport.isFaceID ? styles.faceIdSetupButton : styles.fingerprintSetupButton}
-        onPress={handleSetupBiometric}
-        disabled={isLoading || securityLockout}
-      >
-        <View style={styles.setupButtonContent}>
-          <View style={styles.setupIconContainer}>
-            <FontAwesome6 
-              name={faceIdSupport.isFaceID ? "face-smile" : "fingerprint"} 
-              size={28} 
-              color="#ffffff" 
-              iconStyle='solid' 
-            />
-          </View>
-          <View style={styles.setupButtonText}>
-            <Text style={styles.setupButtonMain}>
-              Aktifkan {faceIdSupport.isFaceID ? 'Face ID' : 'Fingerprint'}
-            </Text>
-            <Text style={styles.setupButtonSub}>
-              {faceIdSupport.isFaceID 
-                ? 'Gunakan wajah Anda untuk login yang aman' 
-                : 'Gunakan sidik jari untuk akses cepat dan aman'
-              }
-            </Text>
-          </View>
-          <FontAwesome6 name="chevron-right" size={18} color="#ffffff" iconStyle='solid' />
-        </View>
-      </TouchableOpacity>
+      <View style={{ display: (!isAvailable || hasCredentials) ? 'none' : 'flex' }}>
+        {!isEnrolled ? (
+          <TouchableOpacity
+            style={styles.enrollmentButton}
+            onPress={() => {
+              const biometricName = faceIdSupport.isFaceID ? 'Face ID' : 'Fingerprint';
+              const settingsUrl = Platform.OS === 'ios'
+                ? (faceIdSupport.isFaceID ? 'App-Prefs:FACEID' : 'App-Prefs:TOUCHID_PASSCODE')
+                : 'android.settings.SECURITY_SETTINGS';
+
+              Alert.alert(
+                `Setup ${biometricName} di Perangkat`,
+                `Anda perlu mengatur ${biometricName} di pengaturan perangkat terlebih dahulu sebelum bisa menggunakannya di aplikasi.`,
+                [
+                  {
+                    text: 'Buka Pengaturan',
+                    onPress: () => {
+                      if (Platform.OS === 'ios') {
+                        Linking.openURL(settingsUrl);
+                      } else {
+                        Linking.openSettings();
+                      }
+                    }
+                  },
+                  { text: 'Nanti', style: 'cancel' }
+                ]
+              );
+            }}
+            disabled={isLoading}
+          >
+            <View style={styles.enrollmentButtonContent}>
+              <FontAwesome6 
+                name={faceIdSupport.isFaceID ? "face-smile" : "fingerprint"} 
+                size={24} 
+                color="#ffffff" 
+                iconStyle='solid' 
+              />
+              <View style={styles.enrollmentButtonText}>
+                <Text style={styles.enrollmentButtonMain}>
+                  Setup {faceIdSupport.isFaceID ? 'Face ID' : 'Fingerprint'} di Perangkat
+                </Text>
+                <Text style={styles.enrollmentButtonSub}>
+                  Atur {faceIdSupport.isFaceID ? 'wajah Anda' : 'sidik jari'} di pengaturan sistem terlebih dahulu
+                </Text>
+              </View>
+              <FontAwesome6 name="arrow-up-right-from-square" size={16} color="#ffffff" iconStyle='solid' />
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={faceIdSupport.isFaceID ? styles.faceIdSetupButton : styles.fingerprintSetupButton}
+            onPress={handleSetupBiometric}
+            disabled={isLoading || securityLockout}
+          >
+            <View style={styles.setupButtonContent}>
+              <View style={styles.setupIconContainer}>
+                <FontAwesome6 
+                  name={faceIdSupport.isFaceID ? "face-smile" : "fingerprint"} 
+                  size={28} 
+                  color="#ffffff" 
+                  iconStyle='solid' 
+                />
+              </View>
+              <View style={styles.setupButtonText}>
+                <Text style={styles.setupButtonMain}>
+                  Aktifkan {faceIdSupport.isFaceID ? 'Face ID' : 'Fingerprint'}
+                </Text>
+                <Text style={styles.setupButtonSub}>
+                  {faceIdSupport.isFaceID 
+                    ? 'Gunakan wajah Anda untuk login yang aman' 
+                    : 'Gunakan sidik jari untuk akses cepat dan aman'
+                  }
+                </Text>
+              </View>
+              <FontAwesome6 name="chevron-right" size={18} color="#ffffff" iconStyle='solid' />
+            </View>
+          </TouchableOpacity>
+        )}
+      </View>
     );
   };
 
@@ -770,7 +908,7 @@ const BiometricSetupScreen = () => {
         <View style={styles.statusInfo}>
           <View style={styles.statusItem}>
             <FontAwesome6
-              name={isAvailable ? "check" : "xmark"}
+              name={isAvailable ? "circle-check" : "circle-xmark"}
               size={16}
               color={isAvailable ? "#4caf50" : "#f44336"}
               iconStyle='solid'
@@ -819,17 +957,6 @@ const BiometricSetupScreen = () => {
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <FontAwesome6 name="arrow-left" size={20} color="#2e7d32" iconStyle='solid' />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Biometric Setup</Text>
-      </View>
-
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2e7d32" />
@@ -849,56 +976,56 @@ const BiometricSetupScreen = () => {
 
           {/* Setup Button */}
           <BiometricSetupButtons />
-
+          
           {/* Biometric Switch */}
-          {biometricInfo.isAvailable && biometricInfo.isEnrolled && (
-            <View style={styles.settingCard}>
-              <View style={styles.settingHeader}>
-                <FontAwesome6 name="shield" size={20} color="#2e7d32" iconStyle='solid' />
-                <Text style={styles.settingTitle}>
-                  {faceIdSupport.isFaceID ? 'Face ID' : (biometryType || 'Biometric')} Login
-                </Text>
-              </View>
-              <Text style={styles.settingDescription}>
-                Use your {faceIdSupport.isFaceID ? 'face' : (biometryType || 'biometric')?.toLowerCase()} to unlock the app and login securely
+          <View style={[
+            styles.settingCard,
+            { display: (biometricInfo.isAvailable && biometricInfo.isEnrolled) ? 'flex' : 'none' }
+          ]}>
+            <View style={styles.settingHeader}>
+              <FontAwesome6 name="shield" size={20} color="#2e7d32" iconStyle='solid' />
+              <Text style={styles.settingTitle}>
+                {faceIdSupport.isFaceID ? 'Face ID' : (biometryType || 'Biometric')} Login
               </Text>
-
-              <View style={styles.switchContainer}>
-                <Text style={styles.switchLabel}>
-                  {biometricInfo.hasCredentials ? 'Enabled' : 'Disabled'}
-                </Text>
-                <Switch
-                  value={biometricInfo.hasCredentials ?? false}
-                  onValueChange={handleToggleBiometric}
-                  disabled={isLoading || securityLockout || !biometricInfo.isEnrolled}
-                  trackColor={{ false: '#f5f5f5', true: '#c8e6c9' }}
-                  thumbColor={biometricInfo.hasCredentials ? '#2e7d32' : '#9e9e9e'}
-                />
-              </View>
             </View>
-          )}
+            <Text style={styles.settingDescription}>
+              Use your {faceIdSupport.isFaceID ? 'face' : (biometryType || 'biometric')?.toLowerCase()} to unlock the app and login securely
+            </Text>
+
+            <View style={styles.switchContainer}>
+              <Text style={styles.switchLabel}>
+                {biometricInfo.hasCredentials ? 'Enabled' : 'Disabled'}
+              </Text>
+              <Switch
+                value={biometricInfo.hasCredentials ?? false}
+                onValueChange={handleToggleBiometric}
+                disabled={isLoading || securityLockout || !biometricInfo.isEnrolled}
+                trackColor={{ false: '#f5f5f5', true: '#c8e6c9' }}
+                thumbColor={biometricInfo.hasCredentials ? '#2e7d32' : '#9e9e9e'}
+              />
+            </View>
+          </View>
 
           {/* Test Button */}
-          {biometricInfo.hasCredentials && (
-            <TouchableOpacity
-              style={[
-                styles.testButton,
-                faceIdSupport.isFaceID ? styles.faceIdTestButton : styles.fingerprintTestButton
-              ]}
-              onPress={handleTestBiometric}
-              disabled={isLoading || securityLockout}
-            >
-              <FontAwesome6
-                name={faceIdSupport.isFaceID ? "face-smile" : "fingerprint"}
-                size={18}
-                color="#ffffff"
-                iconStyle='solid'
-              />
-              <Text style={styles.testButtonText}>
-                Test {faceIdSupport.isFaceID ? 'Face ID' : (biometryType || biometricInfo.type)}
-              </Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={[
+              styles.testButton,
+              faceIdSupport.isFaceID ? styles.faceIdTestButton : styles.fingerprintTestButton,
+              { display: biometricInfo.hasCredentials ? 'flex' : 'none' }
+            ]}
+            onPress={handleTestBiometric}
+            disabled={isLoading || securityLockout}
+          >
+            <FontAwesome6
+              name={faceIdSupport.isFaceID ? "face-smile" : "fingerprint"}
+              size={18}
+              color="#ffffff"
+              iconStyle='solid'
+            />
+            <Text style={styles.testButtonText}>
+              Test {faceIdSupport.isFaceID ? 'Face ID' : (biometryType || biometricInfo.type)}
+            </Text>
+          </TouchableOpacity>
 
           {/* Information Section */}
           <View style={styles.infoCard}>
@@ -1139,6 +1266,126 @@ const styles = StyleSheet.create({
     height: 30,
     backgroundColor: '#e0e0e0',
   },
+  // Profiles Section
+  profilesContainer: {
+    backgroundColor: '#ffffff',
+    margin: 16,
+    marginBottom: 8,
+    padding: 20,
+    borderRadius: 16,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+  },
+  profilesTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2196f3',
+    marginBottom: 4,
+  },
+  profilesSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+  },
+  profilesList: {
+    gap: 12,
+    marginBottom: 16,
+  },
+  profileCard: {
+    backgroundColor: '#f8f9fa',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  profileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  profileIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#e3f2fd',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  profileInfo: {
+    flex: 1,
+  },
+  profileName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 4,
+  },
+  profileDetails: {
+    fontSize: 12,
+    color: '#666',
+  },
+  profileActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  deleteButton: {
+    padding: 8,
+  },
+  statusIndicator: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  statusIndicatorText: {
+    fontSize: 10,
+    color: '#ffffff',
+    fontWeight: 'bold',
+  },
+  addFingerprintButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#e3f2fd',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2196f3',
+    borderStyle: 'dashed',
+    gap: 8,
+  },
+  addFingerprintText: {
+    color: '#2196f3',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  disabledButton: {
+    borderColor: '#e0e0e0',
+    backgroundColor: '#f5f5f5',
+  },
+  disabledText: {
+    color: '#9e9e9e',
+  },
+  infoNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff8e1',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+    gap: 8,
+  },
+  infoNoteText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#ff9800',
+    lineHeight: 16,
+  },
   // Setup Buttons
   faceIdSetupButton: {
     backgroundColor: '#2e7d32',
@@ -1279,10 +1526,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statusText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#333',
-    marginLeft: 12,
     fontWeight: '500',
+    marginLeft: 8,
   },
   statusTextDisabled: {
     color: '#9e9e9e',
