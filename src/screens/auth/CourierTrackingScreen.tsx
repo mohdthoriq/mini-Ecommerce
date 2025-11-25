@@ -82,7 +82,7 @@ interface TrackingOrder {
   total: number;
   estimatedTime?: string;
   courier: CourierData;
-  lastLocation?: LocationData;
+  lastLocation: LocationData;
 }
 
 // Interface untuk data yang dikirim ke server
@@ -103,7 +103,35 @@ const CourierTrackingScreen = () => {
   const navigation = useNavigation<CourierTrackingNavigationProp>();
   const route = useRoute();
   const { user } = useAuth();
-  
+
+  // ✅ PERBAIKAN: Ambil data dari route dengan type yang benar
+  const routeParams = route.params as HomeStackParamList['CourierTracking'];
+
+  const {
+    order,           // Data order lengkap dari checkout
+    orderId,         // ID order
+    total,           // Total pembayaran
+    estimatedTime,   // Estimasi waktu
+    customerName,    // Nama customer
+    items,           // Items yang dibeli
+    subtotal,        // Subtotal
+    shippingFee,     // Ongkir
+    tax,             // Pajak
+    discount         // Diskon
+  } = routeParams || {};
+
+  console.log('📦 Data diterima dari checkout:', {
+    orderId,
+    total,
+    estimatedTime,
+    customerName,
+    itemsCount: items?.length,
+    subtotal,
+    shippingFee,
+    tax,
+    discount
+  });
+
   // State untuk tracking
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
   const [courierLocation, setCourierLocation] = useState<LocationData | null>(null);
@@ -114,7 +142,7 @@ const CourierTrackingScreen = () => {
   const [hasPermission, setHasPermission] = useState(false);
   const [isOnline, setIsOnline] = useState<boolean | null>(true);
   const [selectedOrder, setSelectedOrder] = useState<TrackingOrder | null>(null);
-  const [showOrderList, setShowOrderList] = useState(true);
+  const [showOrderList, setShowOrderList] = useState(false);
   const [isSendingLocation, setIsSendingLocation] = useState(false);
 
   // Refs untuk optimasi
@@ -125,7 +153,50 @@ const CourierTrackingScreen = () => {
   const offlineQueueRef = useRef<ServerLocationData[]>([]);
   const locationIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Dummy data tracking orders
+  // ✅ FUNGSI: CREATE TRACKING ORDER DARI DATA CHECKOUT
+  const createTrackingOrderFromCheckout = (): TrackingOrder => {
+    console.log('🚚 Membuat tracking order dari data checkout:', {
+      orderId,
+      total,
+      estimatedTime,
+      customerName
+    });
+
+    // Data kurir tetap - bisa diganti dengan data kurir real dari API
+    const courierData: CourierData = {
+      id: 'KUR-' + Math.random().toString(36).substr(2, 4).toUpperCase(),
+      name: 'Ahmad Santoso', // Nama kurir tetap
+      vehicle: 'Motor',
+      plateNumber: 'B 1234 ABC',
+      phone: '+62 812-3456-7890',
+      rating: 4.8,
+    };
+
+    // ✅ PERBAIKAN: Pastikan lastLocation selalu ada
+    const defaultLocation: LocationData = {
+      latitude: -6.2088, // Lokasi awal kurir
+      longitude: 106.8456,
+      timestamp: Date.now(),
+      accuracy: 15,
+      speed: 0,
+    };
+
+    return {
+      id: `TRK-${Date.now()}`,
+      orderId: orderId || `ORD-${Date.now().toString().slice(-6)}`,
+      date: new Date().toISOString().split('T')[0],
+      time: new Date().toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit'
+      }),
+      status: 'shipped',
+      total: total || 0,
+      estimatedTime: estimatedTime || '30-45 menit',
+      courier: courierData,
+      lastLocation: defaultLocation // ✅ SELALU ADA
+    };
+  };
+  // Dummy data tracking orders - DIPERBAIKI: GUNAKAN DATA KURIR YANG SAMA
   const [trackingOrders] = useState<TrackingOrder[]>([
     {
       id: '1',
@@ -143,7 +214,7 @@ const CourierTrackingScreen = () => {
         phone: '+62 812-3456-7890',
         rating: 4.8,
       },
-      lastLocation: {
+      lastLocation: { // ✅ SELALU ADA
         latitude: -6.2088,
         longitude: 106.8456,
         timestamp: Date.now(),
@@ -166,7 +237,7 @@ const CourierTrackingScreen = () => {
         phone: '+62 813-9876-5432',
         rating: 4.9,
       },
-      lastLocation: {
+      lastLocation: { // ✅ SELALU ADA
         latitude: -6.2095,
         longitude: 106.8462,
         timestamp: Date.now() - 86400000,
@@ -175,6 +246,37 @@ const CourierTrackingScreen = () => {
       }
     }
   ]);
+
+  // ✅ FUNGSI: GET COURIER LOCATION YANG SESUAI DENGAN ORDER
+  const getCourierLocation = (): LocationData => {
+    // Jika ada order dari checkout, gunakan lokasi real atau simulasi berdasarkan data aktual
+    if (selectedOrder?.lastLocation) {
+      const baseLat = selectedOrder.lastLocation.latitude;
+      const baseLng = selectedOrder.lastLocation.longitude;
+
+      // Untuk simulasi pergerakan kurir
+      const randomOffset = () => (Math.random() - 0.5) * 0.001;
+      const progress = Math.min(distanceTraveled / 5000, 1); // Progress perjalanan 0-1
+
+      // Simulasi kurir bergerak menuju lokasi tujuan
+      return {
+        latitude: baseLat + (progress * 0.01) + randomOffset() * 0.1,
+        longitude: baseLng + (progress * 0.01) + randomOffset() * 0.1,
+        timestamp: Date.now(),
+        accuracy: 10 + Math.random() * 10,
+        speed: isTracking ? Math.random() * 10 + 5 : 0,
+      };
+    }
+
+    // Default location jika tidak ada data
+    return {
+      latitude: -6.2088,
+      longitude: 106.8456,
+      timestamp: Date.now(),
+      accuracy: 15,
+      speed: 0,
+    };
+  };
 
   // ✅ FUNGSI: DAPATKAN LOKASI DENGAN OPTIMASI maximumAge (FIXED)
   const getCurrentLocationWithOptimization = (): Promise<GeoPosition> => {
@@ -242,11 +344,11 @@ const CourierTrackingScreen = () => {
     }
 
     setIsSendingLocation(true);
-    
+
     try {
       const now = Date.now();
       const lastSent = lastSentLocationRef.current;
-      
+
       // 🔍 CEK PERUBAHAN SIGNIFIKAN: Skip jika pergerakan < 50 meter
       if (lastSent) {
         const distance = calculateDistance(
@@ -255,7 +357,7 @@ const CourierTrackingScreen = () => {
           position.coords.latitude,
           position.coords.longitude
         );
-        
+
         if (distance < 50 && (now - lastSent.timestamp) < 120000) {
           console.log('📍 Skip mengirim lokasi - perubahan tidak signifikan (< 50m dalam 2m)');
           return;
@@ -286,7 +388,7 @@ const CourierTrackingScreen = () => {
       // 🌐 KIRIM KE SERVER ATAU SIMPAN DI OFFLINE QUEUE
       if (isOnline) {
         await sendToServerAPI(locationData);
-        
+
         lastSentLocationRef.current = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
@@ -296,7 +398,7 @@ const CourierTrackingScreen = () => {
       } else {
         offlineQueueRef.current.push(locationData);
         console.log('💾 Disimpan di offline queue:', offlineQueueRef.current.length, 'items');
-        
+
         if (offlineQueueRef.current.length > 100) {
           offlineQueueRef.current = offlineQueueRef.current.slice(-50);
         }
@@ -316,10 +418,10 @@ const CourierTrackingScreen = () => {
     }
 
     console.log('🔄 Memproses offline queue:', offlineQueueRef.current.length, 'items');
-    
+
     try {
       const itemsToProcess = offlineQueueRef.current.splice(0, 10);
-      
+
       for (const item of itemsToProcess) {
         try {
           await sendToServerAPI(item);
@@ -344,7 +446,7 @@ const CourierTrackingScreen = () => {
           const position = await getCurrentLocationWithOptimization();
           console.log('📍 Periodic location update (optimized)');
           await sendLocationToServer(position);
-          
+
           setCurrentLocation({
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
@@ -379,7 +481,7 @@ const CourierTrackingScreen = () => {
     const unsubscribe = NetInfo.addEventListener(state => {
       const online = state.isConnected && state.isInternetReachable;
       setIsOnline(online);
-      
+
       if (!online && isTracking) {
         console.log('📵 Koneksi terputus, pausing tracking...');
         Alert.alert(
@@ -389,7 +491,7 @@ const CourierTrackingScreen = () => {
         );
         stopTracking();
       }
-      
+
       if (online && offlineQueueRef.current.length > 0) {
         processOfflineQueue();
       }
@@ -403,38 +505,13 @@ const CourierTrackingScreen = () => {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const distance = R * c;
     return distance * 1000;
-  };
-
-  // ✅ FUNGSI: SIMULASI LOKASI KURIR
-  const getSimulatedCourierLocation = (): LocationData => {
-    if (!selectedOrder?.lastLocation) {
-      return {
-        latitude: -6.2088,
-        longitude: 106.8456,
-        timestamp: Date.now(),
-        accuracy: 10,
-        speed: Math.random() * 10 + 5,
-      };
-    }
-
-    const baseLat = selectedOrder.lastLocation.latitude;
-    const baseLng = selectedOrder.lastLocation.longitude;
-    const randomOffset = () => (Math.random() - 0.5) * 0.001;
-    
-    return {
-      latitude: baseLat + randomOffset(),
-      longitude: baseLng + randomOffset(),
-      timestamp: Date.now(),
-      accuracy: 10 + Math.random() * 10,
-      speed: Math.random() * 10 + 5,
-    };
   };
 
   // ✅ FUNGSI: REQUEST LOCATION PERMISSION
@@ -454,7 +531,7 @@ const CourierTrackingScreen = () => {
           buttonPositive: 'Izinkan',
         }
       );
-      
+
       const hasPermission = granted === PermissionsAndroid.RESULTS.GRANTED;
       setHasPermission(hasPermission);
       return hasPermission;
@@ -481,7 +558,7 @@ const CourierTrackingScreen = () => {
       }
 
       console.log('🚀 Memulai tracking kurir dengan optimasi hemat data...');
-      
+
       const permissionGranted = await requestLocationPermission();
       if (!permissionGranted) {
         Alert.alert('Izin Ditolak', 'Tidak dapat melacak kurir tanpa izin lokasi.', [{ text: 'OK' }]);
@@ -495,7 +572,7 @@ const CourierTrackingScreen = () => {
       try {
         const initialPosition = await getCurrentLocationWithOptimization();
         await sendLocationToServer(initialPosition);
-        
+
         setCurrentLocation({
           latitude: initialPosition.coords.latitude,
           longitude: initialPosition.coords.longitude,
@@ -503,6 +580,12 @@ const CourierTrackingScreen = () => {
           accuracy: initialPosition.coords.accuracy,
           speed: initialPosition.coords.speed
         });
+
+        // ✅ PERBAIKAN: Set lokasi kurir berdasarkan order yang aktif
+        const courierLoc = getCourierLocation();
+        setCourierLocation(courierLoc);
+        lastLocationRef.current = courierLoc;
+
       } catch (error) {
         console.warn('⚠️ Gagal mendapatkan lokasi awal:', error);
       }
@@ -538,7 +621,8 @@ const CourierTrackingScreen = () => {
             console.warn('⚠️ Gagal mengirim lokasi:', error);
           });
 
-          const courierLoc = getSimulatedCourierLocation();
+          // ✅ PERBAIKAN: Gunakan fungsi getCourierLocation yang konsisten
+          const courierLoc = getCourierLocation();
           setCourierLocation(courierLoc);
 
           if (lastLocationRef.current) {
@@ -548,7 +632,7 @@ const CourierTrackingScreen = () => {
               courierLoc.latitude,
               courierLoc.longitude
             );
-            
+
             if (distance > 0) {
               setDistanceTraveled(prev => prev + distance);
             }
@@ -560,7 +644,7 @@ const CourierTrackingScreen = () => {
           const errorData = error as GeoError;
           console.error('❌ Error tracking:', errorData);
           let errorMessage = 'Gagal melacak lokasi';
-          
+
           switch (errorData.code) {
             case 1:
               errorMessage = 'Izin lokasi ditolak';
@@ -572,7 +656,7 @@ const CourierTrackingScreen = () => {
               errorMessage = 'Timeout mendapatkan lokasi';
               break;
           }
-          
+
           Alert.alert('Tracking Error', errorMessage);
           stopTracking();
         },
@@ -580,7 +664,7 @@ const CourierTrackingScreen = () => {
       );
 
       setWatchId(id);
-      console.log('✅ Tracking started dengan optimasi hemat data');
+      console.log('✅ Tracking started untuk order:', selectedOrder?.orderId);
 
     } catch (error) {
       console.error('❌ Error starting tracking:', error);
@@ -591,22 +675,22 @@ const CourierTrackingScreen = () => {
   // ✅ FUNGSI: HENTIKAN TRACKING
   const stopTracking = () => {
     console.log('🛑 Menghentikan tracking...');
-    
+
     if (watchId !== null) {
       Geolocation.clearWatch(watchId);
       setWatchId(null);
     }
-    
+
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    
+
     if (locationIntervalRef.current) {
       clearInterval(locationIntervalRef.current);
       locationIntervalRef.current = null;
     }
-    
+
     setIsTracking(false);
     setElapsedTime(0);
     setDistanceTraveled(0);
@@ -619,7 +703,7 @@ const CourierTrackingScreen = () => {
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    
+
     if (hrs > 0) {
       return `${hrs}j ${mins}m ${secs}d`;
     }
@@ -639,33 +723,47 @@ const CourierTrackingScreen = () => {
     if (!courierLocation?.speed || courierLocation.speed === 0) {
       return 'Menghitung...';
     }
-    
+
     const remainingDistance = 5000 - distanceTraveled;
     if (remainingDistance <= 0) {
       return 'Sudah sampai!';
     }
-    
+
     const remainingTime = remainingDistance / courierLocation.speed;
     const arrivalTime = new Date(Date.now() + remainingTime * 1000);
-    
-    return arrivalTime.toLocaleTimeString('id-ID', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+
+    return arrivalTime.toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
-  // ✅ FUNGSI: PILIH ORDER
+  // ✅ FUNGSI: PILIH ORDER - DIPERBAIKI
   const handleSelectOrder = (order: TrackingOrder) => {
+    console.log('📋 Memilih order:', order.orderId);
     setSelectedOrder(order);
     setShowOrderList(false);
-    
+
+    // Reset tracking state
     if (isTracking) {
       stopTracking();
     }
-    
+
+    // ✅ PERBAIKAN: Handle undefined lastLocation
     if (order.lastLocation) {
       setCourierLocation(order.lastLocation);
       lastLocationRef.current = order.lastLocation;
+    } else {
+      // Jika tidak ada lastLocation, gunakan lokasi default
+      const defaultLocation: LocationData = {
+        latitude: -6.2088,
+        longitude: 106.8456,
+        timestamp: Date.now(),
+        accuracy: 15,
+        speed: 0,
+      };
+      setCourierLocation(defaultLocation);
+      lastLocationRef.current = defaultLocation;
     }
   };
 
@@ -677,13 +775,38 @@ const CourierTrackingScreen = () => {
     };
   }, []);
 
-  // ✅ AUTO-SELECT ORDER PERTAMA
+  // ✅ EFFECT: AUTO-SELECT ORDER DARI CHECKOUT - DIPERBAIKI
   useEffect(() => {
-    if (trackingOrders.length > 0 && !selectedOrder) {
-      const activeOrder = trackingOrders.find(order => order.status === 'shipped') || trackingOrders[0];
-      setSelectedOrder(activeOrder);
+    if (routeParams && !selectedOrder) {
+      console.log('📦 Data checkout diterima, membuat tracking order...');
+
+      const newOrder = createTrackingOrderFromCheckout();
+      setSelectedOrder(newOrder);
+
+      // ✅ PERBAIKAN: Handle undefined lastLocation
+      if (newOrder.lastLocation) {
+        setCourierLocation(newOrder.lastLocation);
+        lastLocationRef.current = newOrder.lastLocation;
+      } else {
+        // Jika tidak ada lastLocation, gunakan lokasi default
+        const defaultLocation: LocationData = {
+          latitude: -6.2088,
+          longitude: 106.8456,
+          timestamp: Date.now(),
+          accuracy: 15,
+          speed: 0,
+        };
+        setCourierLocation(defaultLocation);
+        lastLocationRef.current = defaultLocation;
+      }
+
+      console.log('✅ Tracking order dibuat:', {
+        orderId: newOrder.orderId,
+        courier: newOrder.courier.name,
+        total: newOrder.total
+      });
     }
-  }, [trackingOrders, selectedOrder]);
+  }, [routeParams, selectedOrder]);
 
   // ✅ HANDLE TOGGLE TRACKING
   const handleToggleTracking = () => {
@@ -691,15 +814,6 @@ const CourierTrackingScreen = () => {
       stopTracking();
     } else {
       startTracking();
-    }
-  };
-
-  // ✅ HANDLE BACK NAVIGATION
-  const handleBack = () => {
-    if (showOrderList) {
-      navigation.goBack();
-    } else {
-      setShowOrderList(true);
     }
   };
 
@@ -719,15 +833,16 @@ const CourierTrackingScreen = () => {
       )}
     </View>
   );
+
   const renderOrderList = () => (
     <View style={styles.container}>
-      <Header 
+      <Header
         title="Riwayat Tracking"
         showBackButton={true}
         rightComponent={<HeaderRight />}
         onBack={() => navigation.goBack()}
       />
-      
+
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Pilih Order untuk Dilacak</Text>
@@ -756,13 +871,13 @@ const CourierTrackingScreen = () => {
                   order.status === 'cancelled' && styles.statusCancelled,
                 ]}>
                   <Text style={styles.statusText}>
-                    {order.status === 'shipped' ? 'Dikirim' : 
-                     order.status === 'delivered' ? 'Sampai' :
-                     order.status === 'pending' ? 'Pending' : 'Dibatalkan'}
+                    {order.status === 'shipped' ? 'Dikirim' :
+                      order.status === 'delivered' ? 'Sampai' :
+                        order.status === 'pending' ? 'Pending' : 'Dibatalkan'}
                   </Text>
                 </View>
               </View>
-              
+
               <View style={styles.orderDetails}>
                 <View style={styles.detailRow}>
                   <FontAwesome6 name="truck" size={14} color="#6b7280" iconStyle='solid' />
@@ -788,10 +903,10 @@ const CourierTrackingScreen = () => {
     </View>
   );
 
-  // Render Tracking Detail
+  // Render Tracking Detail - DIPERBAIKI
   const renderTrackingDetail = () => (
     <View style={styles.container}>
-      <Header 
+      <Header
         title="Lacak Kurir"
         showBackButton={true}
         rightComponent={<HeaderRight />}
@@ -802,9 +917,17 @@ const CourierTrackingScreen = () => {
         {/* Info Order */}
         <View style={styles.section}>
           <View style={styles.orderBanner}>
-            <Text style={styles.orderBannerId}>{selectedOrder?.orderId}</Text>
+            <Text style={styles.orderBannerId}>
+              {selectedOrder?.orderId || 'Loading...'}
+            </Text>
+            <Text style={styles.orderBannerCustomer}>
+              {customerName || 'Customer'}
+            </Text>
             <Text style={styles.orderBannerDate}>
-              {selectedOrder?.date} • {selectedOrder?.time}
+              Total: Rp {(total || selectedOrder?.total || 0).toLocaleString('id-ID')}
+            </Text>
+            <Text style={styles.orderBannerTime}>
+              Estimasi: {estimatedTime || selectedOrder?.estimatedTime || '30-45 menit'}
             </Text>
           </View>
         </View>
@@ -814,22 +937,69 @@ const CourierTrackingScreen = () => {
           <Text style={styles.sectionTitle}>Status Pengiriman</Text>
           <View style={styles.deliveryCard}>
             <View style={styles.statusRow}>
-              <FontAwesome6 
-                name={isTracking ? "truck-fast" : "truck"} 
-                size={24} 
-                color="#059669" 
-                iconStyle='solid' 
+              <FontAwesome6
+                name={isTracking ? "truck-fast" : "truck"}
+                size={24}
+                color="#059669"
+                iconStyle='solid'
               />
               <View style={styles.statusInfo}>
                 <Text style={styles.statusTitle}>
-                  {isTracking ? 'Sedang Berjalan' : 'Berhenti'}
+                  {isTracking ? 'Sedang Berjalan' : 'Menunggu Pickup'}
                 </Text>
                 <Text style={styles.statusSubtitle}>
-                  {isTracking ? 'Kurir dalam perjalanan ke lokasi Anda' : 'Tracking dihentikan'}
+                  {selectedOrder?.courier.name || 'Kurir sedang menuju lokasi'}
                 </Text>
               </View>
             </View>
-            
+
+            {/* ✅ PERBAIKAN: Tampilkan items dari checkout */}
+            {items && items.length > 0 && (
+              <View style={styles.itemsSection}>
+                <Text style={styles.itemsTitle}>Detail Pesanan:</Text>
+                {items.map((item, index) => (
+                  <View key={index} style={styles.itemRow}>
+                    <Text style={styles.itemName}>
+                      {item.quantity}x {item.name}
+                    </Text>
+                    <Text style={styles.itemPrice}>
+                      ${item.total?.toFixed(2) || (item.price * item.quantity).toFixed(2)}
+                    </Text>
+                  </View>
+                ))}
+
+                {/* ✅ Tampilkan ringkasan harga */}
+                <View style={styles.priceSummary}>
+                  <View style={styles.priceRow}>
+                    <Text style={styles.priceLabel}>Subtotal:</Text>
+                    <Text style={styles.priceValue}>${subtotal?.toFixed(2) || '0.00'}</Text>
+                  </View>
+                  {discount && discount > 0 && (
+                    <View style={styles.priceRow}>
+                      <Text style={styles.priceLabel}>Diskon:</Text>
+                      <Text style={[styles.priceValue, styles.discountText]}>
+                        -${discount.toFixed(2)}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.priceRow}>
+                    <Text style={styles.priceLabel}>Ongkir:</Text>
+                    <Text style={styles.priceValue}>${shippingFee?.toFixed(2) || '0.00'}</Text>
+                  </View>
+                  <View style={styles.priceRow}>
+                    <Text style={styles.priceLabel}>Pajak:</Text>
+                    <Text style={styles.priceValue}>${tax?.toFixed(2) || '0.00'}</Text>
+                  </View>
+                  <View style={[styles.priceRow, styles.totalPriceRow]}>
+                    <Text style={styles.totalLabel}>Total:</Text>
+                    <Text style={styles.totalValue}>
+                      ${total?.toFixed(2) || selectedOrder?.total.toFixed(2) || '0.00'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
             <View style={styles.statsGrid}>
               <View style={styles.statItem}>
                 <Text style={styles.statValue}>{formatTime(elapsedTime)}</Text>
@@ -859,7 +1029,7 @@ const CourierTrackingScreen = () => {
           </View>
         </View>
 
-        {/* Info Kurir */}
+        {/* Info Kurir - TAMPILKAN DATA KURIR YANG BENAR */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Informasi Kurir</Text>
           <View style={styles.courierCard}>
@@ -868,15 +1038,19 @@ const CourierTrackingScreen = () => {
                 <FontAwesome6 name="user" size={24} color="#ffffff" iconStyle='solid' />
               </View>
               <View style={styles.courierInfo}>
-                <Text style={styles.courierName}>{selectedOrder?.courier.name}</Text>
+                <Text style={styles.courierName}>
+                  {selectedOrder?.courier.name || 'Sedang menugaskan kurir...'}
+                </Text>
                 <Text style={styles.courierId}>{selectedOrder?.courier.id}</Text>
               </View>
               <View style={styles.rating}>
                 <FontAwesome6 name="star" size={14} color="#f59e0b" iconStyle='solid' />
-                <Text style={styles.ratingText}>{selectedOrder?.courier.rating}</Text>
+                <Text style={styles.ratingText}>
+                  {selectedOrder?.courier.rating || '4.8'}
+                </Text>
               </View>
             </View>
-            
+
             <View style={styles.courierDetails}>
               <View style={styles.detailRow}>
                 <FontAwesome6 name="motorcycle" size={16} color="#6b7280" iconStyle='solid' />
@@ -886,7 +1060,9 @@ const CourierTrackingScreen = () => {
               </View>
               <View style={styles.detailRow}>
                 <FontAwesome6 name="phone" size={16} color="#6b7280" iconStyle='solid' />
-                <Text style={styles.detailText}>{selectedOrder?.courier.phone}</Text>
+                <Text style={styles.detailText}>
+                  {selectedOrder?.courier.phone}
+                </Text>
               </View>
             </View>
           </View>
@@ -901,7 +1077,7 @@ const CourierTrackingScreen = () => {
               <View style={styles.locationInfo}>
                 <Text style={styles.locationTitle}>Lokasi Kurir</Text>
                 <Text style={styles.locationText}>
-                  {courierLocation 
+                  {courierLocation
                     ? `${courierLocation.latitude.toFixed(6)}, ${courierLocation.longitude.toFixed(6)}`
                     : 'Mendeteksi lokasi...'
                   }
@@ -911,7 +1087,7 @@ const CourierTrackingScreen = () => {
                 </Text>
               </View>
             </View>
-            
+
             <View style={styles.locationRow}>
               <View style={[styles.locationDot, styles.destinationDot]} />
               <View style={styles.locationInfo}>
@@ -951,13 +1127,13 @@ const CourierTrackingScreen = () => {
                 </>
               )}
             </TouchableOpacity>
-            
+
             {!isOnline && (
               <Text style={styles.offlineHint}>
                 Live tracking membutuhkan koneksi internet
               </Text>
             )}
-            
+
             <TouchableOpacity
               style={styles.secondaryButton}
               onPress={() => {
@@ -982,7 +1158,6 @@ const CourierTrackingScreen = () => {
 
   return showOrderList ? renderOrderList() : renderTrackingDetail();
 };
-
 
 const styles = StyleSheet.create({
   container: {
@@ -1410,6 +1585,87 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     fontStyle: 'italic',
+  },
+  orderBannerCustomer: {
+    fontSize: 14,
+    color: '#dbeafe',
+    marginTop: 4,
+  },
+  orderBannerTime: {
+    fontSize: 12,
+    color: '#dbeafe',
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  itemsSection: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  itemsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+    paddingVertical: 4,
+  },
+  itemName: {
+    fontSize: 12,
+    color: '#6b7280',
+    flex: 1,
+  },
+  itemPrice: {
+    fontSize: 12,
+    color: '#059669',
+    fontWeight: '600',
+  },
+  priceSummary: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  priceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  priceLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  priceValue: {
+    fontSize: 12,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  discountText: {
+    color: '#ef4444',
+  },
+  totalPriceRow: {
+    marginTop: 4,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#d1d5db',
+  },
+  totalLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  totalValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#059669',
   },
 });
 

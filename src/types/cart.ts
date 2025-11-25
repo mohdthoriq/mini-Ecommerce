@@ -15,6 +15,7 @@ export interface CartContextType {
   addToCart: (product: Product, quantity?: number) => Promise<void>;
   updateQuantity: (productId: string, quantity: number) => Promise<void>;
   removeFromCart: (productId: string) => Promise<void>;
+  clearCartAfterCheckout: () => Promise<void>;
   clearCart: () => Promise<void>;
   refreshCart: () => Promise<void>;
 }

@@ -29,20 +29,22 @@ const CartScreen = () => {
         updateQuantity,
         removeFromCart,
         clearCart,
+        clearCartAfterCheckout, // ✅ TAMBAHKAN INI
         cartItemCount,
         totalPrice,
         refreshCart,
         isCartLoading,
         lastCartError
     } = useCart();
-    
+
     const [loading, setLoading] = useState(false);
     const [couponCode, setCouponCode] = useState('');
     const [appliedCoupon, setAppliedCoupon] = useState(false);
     const [pollingCount, setPollingCount] = useState(0);
     const [lastUpdate, setLastUpdate] = useState<string>('Just now');
     const [connectionType, setConnectionType] = useState<string | null>(null);
-    
+    const [isCheckingOut, setIsCheckingOut] = useState(false); // ✅ STATE BARU UNTUK CHECKOUT
+
     // ✅ FIX: Gunakan ref untuk mencegah infinite loop
     const isMountedRef = useRef(true);
     const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -60,47 +62,46 @@ const CartScreen = () => {
                 'Cart Error',
                 lastCartError,
                 [
-                    { 
-                        text: 'Clear Cart', 
+                    {
+                        text: 'Clear Cart',
                         onPress: () => handleClearCart(),
                         style: 'destructive'
                     },
-                    { 
-                        text: 'Retry', 
+                    {
+                        text: 'Retry',
                         onPress: () => handleRefreshCart()
                     },
-                    { 
-                        text: 'Ignore', 
-                        style: 'cancel' 
+                    {
+                        text: 'Ignore',
+                        style: 'cancel'
                     }
                 ]
             );
         }
-    }, [lastCartError]); // ✅ HANYA lastCartError sebagai dependency
+    }, [lastCartError]);
 
     // ✅ FIX: Optimized polling implementation dengan cleanup yang proper
     const startPolling = useCallback(() => {
         console.log('🔄 Starting cart polling...');
-        
-        // Clear existing interval terlebih dahulu
+
         if (pollingIntervalRef.current) {
             clearInterval(pollingIntervalRef.current);
         }
 
         pollingIntervalRef.current = setInterval(async () => {
-            if (!isMountedRef.current) return;
-            
+            if (!isMountedRef.current || isCheckingOut) return; // ✅ JANGAN POLL SAAT CHECKOUT
+
             try {
                 console.log('📡 Polling cart data...');
-                await refreshCartRef.current(); // Gunakan ref, bukan function langsung
+                await refreshCartRef.current();
                 setPollingCount(prev => prev + 1);
                 setLastUpdate(new Date().toLocaleTimeString());
                 console.log('✅ Cart data updated via polling');
             } catch (error) {
                 console.error('❌ Polling error:', error);
             }
-        }, 30000); // ✅ UBAH: Poll setiap 30 detik (bukan 15 detik) untuk mengurangi beban
-    }, []);
+        }, 30000);
+    }, [isCheckingOut]); // ✅ TAMBAHKAN DEPENDENCY
 
     const stopPolling = useCallback(() => {
         console.log('🛑 Stopping cart polling');
@@ -121,7 +122,6 @@ const CartScreen = () => {
             setConnectionType(newConnectionType);
             console.log('🌐 Connection type changed:', newConnectionType);
 
-            // ✅ OPTIMASI BANDWIDTH: Hentikan polling jika jaringan seluler
             if (newConnectionType === 'cellular') {
                 console.log('📱 Cellular network detected - stopping polling to save data');
                 stopPolling();
@@ -132,19 +132,102 @@ const CartScreen = () => {
             }
         });
 
-        // Start polling initially hanya jika bukan cellular
-        if (connectionType !== 'cellular') {
+        if (connectionType !== 'cellular' && !isCheckingOut) {
             startPolling();
         }
 
-        // Cleanup function
         return () => {
             console.log('🧹 Cleaning up polling interval');
             isMountedRef.current = false;
             stopPolling();
             unsubscribeNetInfo();
         };
-    }, [startPolling, stopPolling]); // ✅ FIX: Dependencies yang stabil
+    }, [startPolling, stopPolling, isCheckingOut]); // ✅ TAMBAHKAN DEPENDENCY
+
+    // ✅ FIX: Function checkout yang diperbaiki
+    const proceedToCheckout = async () => {
+        if (cartItems.length === 0) {
+            Alert.alert('Empty Cart', 'Your cart is empty. Add some items before checkout.');
+            return;
+        }
+
+        setIsCheckingOut(true); // ✅ SET STATE CHECKOUT
+        stopPolling(); // ✅ HENTIKAN POLLING SAAT CHECKOUT
+
+        try {
+            // Simulasi proses checkout
+            Alert.alert(
+                'Confirm Checkout',
+                `Proceed with checkout for $${getTotal().toFixed(2)}?`,
+                [
+                    {
+                        text: 'Cancel',
+                        style: 'cancel',
+                        onPress: () => {
+                            setIsCheckingOut(false);
+                            startPolling(); // ✅ LANJUTKAN POLLING JIKA BATAL
+                        }
+                    },
+                    {
+                        text: 'Confirm',
+                        onPress: async () => {
+                            try {
+                                // ✅ 1. TAMPILKAN LOADING
+                                setLoading(true);
+
+                                // ✅ 2. PROSES CHECKOUT (simulasi)
+                                await new Promise(resolve => setTimeout(resolve, 2000));
+
+                                // ✅ 3. CLEAR CART SETELAH CHECKOUT BERHASIL
+                                await clearCartAfterCheckout();
+
+                                // ✅ 4. TAMPILKAN SUKSES
+                                Alert.alert(
+                                    'Checkout Successful!',
+                                    'Thank you for your purchase! Your order has been placed successfully.',
+                                    [
+                                        {
+                                            text: 'OK',
+                                            onPress: () => {
+                                                // ✅ 5. RESET STATE
+                                                setAppliedCoupon(false);
+                                                setCouponCode('');
+                                                setIsCheckingOut(false);
+
+                                                navigation.navigate('CheckoutModal', {
+                                                    cartItems,
+                                                    subtotal: getSubtotal(),
+                                                    discount: getDiscount(),
+                                                    shippingFee: getShippingFee(),
+                                                    tax: getTax(),
+                                                    total: getTotal()
+                                                });
+                                            }
+                                        }
+                                    ]
+                                );
+
+                            } catch (error: any) {
+                                console.error('❌ Checkout error:', error);
+                                Alert.alert(
+                                    'Checkout Failed',
+                                    error.message || 'Failed to process checkout. Please try again.'
+                                );
+                                setIsCheckingOut(false);
+                                startPolling(); // ✅ LANJUTKAN POLLING JIKA GAGAL
+                            } finally {
+                                setLoading(false);
+                            }
+                        }
+                    }
+                ]
+            );
+        } catch (error: any) {
+            Alert.alert('Error', 'Failed to proceed with checkout');
+            setIsCheckingOut(false);
+            startPolling();
+        }
+    };
 
     // ✅ FIX: Optimized quantity update dengan error handling
     const handleUpdateQuantity = async (productId: string, newQuantity: number) => {
@@ -242,7 +325,6 @@ const CartScreen = () => {
             return;
         }
 
-        // Simulasi coupon validation
         const validCoupons = ['SAVE10', 'WELCOME15', 'SUMMER20'];
         if (validCoupons.includes(couponCode.toUpperCase())) {
             setAppliedCoupon(true);
@@ -258,36 +340,19 @@ const CartScreen = () => {
 
     const getDiscount = () => {
         if (!appliedCoupon) return 0;
-        return getSubtotal() * 0.1; // 10% discount
+        return getSubtotal() * 0.1;
     };
 
     const getShippingFee = () => {
-        return getSubtotal() > 100 ? 0 : 9.99; // Free shipping over $100
+        return getSubtotal() > 100 ? 0 : 9.99;
     };
 
     const getTax = () => {
-        return (getSubtotal() - getDiscount()) * 0.0825; // 8.25% tax
+        return (getSubtotal() - getDiscount()) * 0.0825;
     };
 
     const getTotal = () => {
         return getSubtotal() - getDiscount() + getShippingFee() + getTax();
-    };
-
-    const proceedToCheckout = () => {
-        if (cartItems.length === 0) {
-            Alert.alert('Empty Cart', 'Your cart is empty. Add some items before checkout.');
-            return;
-        }
-
-        // Navigate to checkout dengan data cart
-        navigation.navigate('CheckoutModal', {
-            cartItems,
-            subtotal: getSubtotal(),
-            discount: getDiscount(),
-            shippingFee: getShippingFee(),
-            tax: getTax(),
-            total: getTotal()
-        });
     };
 
     const continueShopping = () => {
@@ -302,7 +367,7 @@ const CartScreen = () => {
             <View style={styles.errorBanner}>
                 <FontAwesome6 name="triangle-exclamation" size={16} color="#ffffff" iconStyle='solid' />
                 <Text style={styles.errorBannerText}>{lastCartError}</Text>
-                <TouchableOpacity 
+                <TouchableOpacity
                     onPress={handleRefreshCart}
                     style={styles.retryButtonSmall}
                 >
@@ -319,10 +384,11 @@ const CartScreen = () => {
                 <Text style={styles.statusLabel}>Auto-refresh:</Text>
                 <View style={[
                     styles.statusIndicator,
-                    connectionType === 'cellular' ? styles.statusDisabled : styles.statusActive
+                    connectionType === 'cellular' || isCheckingOut ? styles.statusDisabled : styles.statusActive
                 ]}>
                     <Text style={styles.statusText}>
-                        {connectionType === 'cellular' ? 'Disabled (Cellular)' : 'Active'}
+                        {isCheckingOut ? 'Paused (Checkout)' :
+                            connectionType === 'cellular' ? 'Disabled (Cellular)' : 'Active'}
                     </Text>
                 </View>
             </View>
@@ -330,17 +396,23 @@ const CartScreen = () => {
                 <Text style={styles.statusLabel}>Last updated:</Text>
                 <Text style={styles.statusValue}>{lastUpdate}</Text>
             </View>
-            {connectionType === 'cellular' && (
-                <TouchableOpacity style={styles.manualRefreshButton} onPress={handleManualRefresh}>
+            {(connectionType === 'cellular' || isCheckingOut) && (
+                <TouchableOpacity
+                    style={styles.manualRefreshButton}
+                    onPress={handleManualRefresh}
+                    disabled={isCheckingOut}
+                >
                     <FontAwesome6 name="rotate" size={14} color="#ffffff" iconStyle='solid' />
-                    <Text style={styles.manualRefreshText}>Refresh Now</Text>
+                    <Text style={styles.manualRefreshText}>
+                        {isCheckingOut ? 'Processing...' : 'Refresh Now'}
+                    </Text>
                 </TouchableOpacity>
             )}
         </View>
     );
 
     // ✅ FIX: Loading state untuk cart operations
-    if (isCartLoading && cartItems.length === 0) {
+    if (isCartLoading && cartItems.length === 0 && !isCheckingOut) {
         return (
             <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#10b981" />
@@ -357,7 +429,7 @@ const CartScreen = () => {
                     <View style={styles.headerTitleContainer}>
                         <Text style={styles.headerTitle}>Shopping Cart</Text>
                         {lastCartError && (
-                            <TouchableOpacity 
+                            <TouchableOpacity
                                 style={styles.errorIndicator}
                                 onPress={handleRefreshCart}
                             >
@@ -366,9 +438,10 @@ const CartScreen = () => {
                         )}
                     </View>
                     {cartItems.length > 0 && (
-                        <TouchableOpacity 
+                        <TouchableOpacity
                             style={styles.clearCartButton}
                             onPress={handleClearCart}
+                            disabled={isCheckingOut}
                         >
                             <FontAwesome6 name="broom" size={16} color="#ef4444" iconStyle='solid' />
                             <Text style={styles.clearCartText}>Clear</Text>
@@ -390,23 +463,34 @@ const CartScreen = () => {
                         onRefresh={handleRefreshCart}
                         colors={['#10b981']}
                         tintColor="#10b981"
+                        enabled={!isCheckingOut} // ✅ DISABLE REFRESH SAAT CHECKOUT
                     />
                 }
             >
                 {cartItems.length === 0 ? (
-                    // Empty Cart State
+                    // Empty Cart State - AKAN DITAMPILKAN SETELAH CHECKOUT
                     <View style={styles.emptyContainer}>
                         <FontAwesome6 name="cart-shopping" size={80} color="#d1d5db" iconStyle='solid' />
-                        <Text style={styles.emptyTitle}>Your cart is empty</Text>
-                        <Text style={styles.emptySubtitle}>
-                            Browse our products and add items to your cart
+                        <Text style={styles.emptyTitle}>
+                            {isCheckingOut ? 'Processing your order...' : 'Your cart is empty'}
                         </Text>
-                        <TouchableOpacity
-                            style={styles.shopButton}
-                            onPress={continueShopping}
-                        >
-                            <Text style={styles.shopButtonText}>Start Shopping</Text>
-                        </TouchableOpacity>
+                        <Text style={styles.emptySubtitle}>
+                            {isCheckingOut
+                                ? 'Please wait while we process your payment'
+                                : 'Browse our products and add items to your cart'
+                            }
+                        </Text>
+                        {!isCheckingOut && (
+                            <TouchableOpacity
+                                style={styles.shopButton}
+                                onPress={continueShopping}
+                            >
+                                <Text style={styles.shopButtonText}>Start Shopping</Text>
+                            </TouchableOpacity>
+                        )}
+                        {isCheckingOut && (
+                            <ActivityIndicator size="large" color="#10b981" style={{ marginTop: 20 }} />
+                        )}
                     </View>
                 ) : (
                     // Cart Items
@@ -417,7 +501,7 @@ const CartScreen = () => {
                                 <Text style={styles.sectionTitle}>
                                     Cart Items ({cartItemCount})
                                 </Text>
-                                {isCartLoading && (
+                                {(isCartLoading || isCheckingOut) && (
                                     <ActivityIndicator size="small" color="#10b981" />
                                 )}
                             </View>
@@ -445,32 +529,32 @@ const CartScreen = () => {
                                             <TouchableOpacity
                                                 style={[
                                                     styles.quantityButton,
-                                                    item.quantity <= 1 && styles.quantityButtonDisabled
+                                                    (item.quantity <= 1 || isCheckingOut) && styles.quantityButtonDisabled
                                                 ]}
                                                 onPress={() => handleUpdateQuantity(item.product.id, item.quantity - 1)}
-                                                disabled={item.quantity <= 1 || isCartLoading}
+                                                disabled={item.quantity <= 1 || isCartLoading || isCheckingOut}
                                             >
-                                                <FontAwesome6 
-                                                    name="minus" 
-                                                    size={12} 
-                                                    color={item.quantity <= 1 ? '#9ca3af' : '#374151'} 
-                                                    iconStyle='solid' 
+                                                <FontAwesome6
+                                                    name="minus"
+                                                    size={12}
+                                                    color={item.quantity <= 1 ? '#9ca3af' : '#374151'}
+                                                    iconStyle='solid'
                                                 />
                                             </TouchableOpacity>
                                             <Text style={styles.quantityText}>{item.quantity}</Text>
                                             <TouchableOpacity
                                                 style={[
                                                     styles.quantityButton,
-                                                    item.quantity >= (item.product.stock || 10) && styles.quantityButtonDisabled
+                                                    (item.quantity >= (item.product.stock || 10) || isCheckingOut) && styles.quantityButtonDisabled
                                                 ]}
                                                 onPress={() => handleUpdateQuantity(item.product.id, item.quantity + 1)}
-                                                disabled={item.quantity >= (item.product.stock || 10) || isCartLoading}
+                                                disabled={item.quantity >= (item.product.stock || 10) || isCartLoading || isCheckingOut}
                                             >
-                                                <FontAwesome6 
-                                                    name="plus" 
-                                                    size={12} 
-                                                    color={item.quantity >= (item.product.stock || 10) ? '#9ca3af' : '#374151'} 
-                                                    iconStyle='solid' 
+                                                <FontAwesome6
+                                                    name="plus"
+                                                    size={12}
+                                                    color={item.quantity >= (item.product.stock || 10) ? '#9ca3af' : '#374151'}
+                                                    iconStyle='solid'
                                                 />
                                             </TouchableOpacity>
                                         </View>
@@ -484,7 +568,7 @@ const CartScreen = () => {
                                         <TouchableOpacity
                                             style={styles.removeButton}
                                             onPress={() => handleRemoveItem(item.product.id)}
-                                            disabled={isCartLoading}
+                                            disabled={isCartLoading || isCheckingOut}
                                         >
                                             <FontAwesome6 name="trash" size={16} color="#ef4444" iconStyle='solid' />
                                         </TouchableOpacity>
@@ -502,17 +586,17 @@ const CartScreen = () => {
                                     placeholder="Enter coupon code"
                                     value={couponCode}
                                     onChangeText={setCouponCode}
-                                    editable={!appliedCoupon && !isCartLoading}
+                                    editable={!appliedCoupon && !isCartLoading && !isCheckingOut}
                                     placeholderTextColor="#999"
                                 />
                                 <TouchableOpacity
                                     style={[
                                         styles.couponButton,
                                         appliedCoupon && styles.couponButtonApplied,
-                                        isCartLoading && styles.buttonDisabled
+                                        (isCartLoading || isCheckingOut) && styles.buttonDisabled
                                     ]}
                                     onPress={appliedCoupon ? () => setAppliedCoupon(false) : applyCoupon}
-                                    disabled={isCartLoading}
+                                    disabled={isCartLoading || isCheckingOut}
                                 >
                                     <Text style={styles.couponButtonText}>
                                         {appliedCoupon ? 'Applied' : 'Apply'}
@@ -589,18 +673,19 @@ const CartScreen = () => {
                     <TouchableOpacity
                         style={[
                             styles.checkoutButton,
-                            isCartLoading && styles.buttonDisabled
+                            (isCartLoading || isCheckingOut) && styles.buttonDisabled
                         ]}
                         onPress={proceedToCheckout}
-                        disabled={isCartLoading}
+                        disabled={isCartLoading || isCheckingOut}
                     >
                         <View style={styles.checkoutInfo}>
                             <Text style={styles.checkoutText}>
-                                {isCartLoading ? 'Processing...' : 'Proceed to Checkout'}
+                                {isCheckingOut ? 'Processing...' :
+                                    isCartLoading ? 'Updating...' : 'Proceed to Checkout'}
                             </Text>
                             <Text style={styles.checkoutTotal}>${getTotal().toFixed(2)}</Text>
                         </View>
-                        {!isCartLoading && (
+                        {!(isCartLoading || isCheckingOut) && (
                             <FontAwesome6 name="arrow-right" size={16} color="#ffffff" iconStyle='solid' />
                         )}
                     </TouchableOpacity>
@@ -609,7 +694,6 @@ const CartScreen = () => {
         </View>
     );
 };
-
 // Styles tetap sama seperti sebelumnya...
 const styles = StyleSheet.create({
     container: {

@@ -31,7 +31,7 @@ export type RootDrawerParamList = {
   KTPupload: undefined;
   ProductCategory: { category: string };
   ProductList: undefined;
-  ProductDetail: { productId: string }; 
+  ProductDetail: { productId: string };
   CheckoutModal: undefined;
   TestError: undefined;
   CourierTracking: {
@@ -49,19 +49,53 @@ export type HomeStackParamList = {
   Biometric: undefined;
   ProductList: undefined;
   Profile: undefined;
-  CourierTracking: undefined;
   Login: undefined;
   KTPupload: undefined;
   TestError: undefined;
-  CheckoutModal: { 
-        product?: Product; // Untuk checkout single product
-        cartItems?: CartItem[]; // Untuk checkout dari cart
-        subtotal?: number;
-        discount?: number;
-        shippingFee?: number;
-        tax?: number;
-        total?: number;
+  CheckoutModal: {
+    product?: Product; // Untuk checkout single product
+    cartItems?: CartItem[]; // Untuk checkout dari cart
+    subtotal?: number;
+    discount?: number;
+    shippingFee?: number;
+    tax?: number;
+    total?: number;
+  };
+  CourierTracking: {
+    order?: {
+      orderId: string;
+      total: number;
+      subtotal: number;
+      shippingFee: number;
+      tax: number;
+      discount: number;
+      items: CartItem[];
+      customerInfo: {
+        firstName: string;
+        lastName: string;
+        email: string;
+        phone: string;
+      };
+      shippingMethod: string;
+      paymentMethod: string;
+      estimatedDelivery: string;
+      timestamp: string;
     };
+    orderId?: string;
+    total?: number;
+    estimatedTime?: string;
+    customerName?: string;
+    items?: Array<{
+      name: string;
+      quantity: number;
+      price: number;
+      total?: number;
+    }>;
+    subtotal?: number;
+    shippingFee?: number;
+    tax?: number;
+    discount?: number;
+  };
 };
 
 export type BottomTabsParamList = {
@@ -85,7 +119,7 @@ export type TopTabsParamList = {
 };
 
 export interface CartItem {
-    product: Product;
-    quantity: number;
-    id: string;
+  product: Product;
+  quantity: number;
+  id: string;
 }

@@ -22,6 +22,7 @@ import FontAwesome6 from '@react-native-vector-icons/fontawesome6';
 import { simplePrompt } from '../../utils/simplePrompt';
 import Geolocation from '@react-native-community/geolocation';
 import { Animated, Easing } from 'react-native';
+import { useCart } from '../../context/CartContext';
 
 type ModalCheckoutNavigationProp = NativeStackNavigationProp<HomeStackParamList, 'CheckoutModal'>;
 
@@ -222,6 +223,8 @@ const InputField = React.memo(({
 const CheckoutModalScreen = () => {
     const navigation = useNavigation<ModalCheckoutNavigationProp>();
     const route = useRoute();
+    const { clearCartAfterCheckout } = useCart();
+
 
     type ShippingMethod = 'standard' | 'express' | 'priority';
     type PaymentMethod = 'credit_card' | 'paypal' | 'apple_pay';
@@ -360,15 +363,16 @@ const CheckoutModalScreen = () => {
     }, [formErrors.phone]);
 
     // Process payment
-    const processPayment = async (): Promise<boolean> => {
+    const processPayment = async (): Promise<{ success: boolean; orderId: string }> => {
         try {
             console.log('💳 Memproses pembayaran...');
             await new Promise(resolve => setTimeout(resolve, 2000));
             const isSuccess = Math.random() > 0.1;
-            
+
             if (isSuccess) {
-                console.log('✅ Pembayaran berhasil');
-                return true;
+                const orderId = 'ORD-' + Date.now().toString().slice(-6);
+                console.log('✅ Pembayaran berhasil, Order ID:', orderId);
+                return { success: true, orderId };
             } else {
                 throw new Error('Pembayaran gagal - Saldo tidak cukup');
             }
@@ -387,9 +391,9 @@ const CheckoutModalScreen = () => {
 
         try {
             const confirmation = await simplePrompt(
-                `Konfirmasi Transfer Rp ${(total * 15000).toLocaleString('id-ID')}`,
+                `Konfirmasi Pembayaran $${total.toFixed(2)}`,
                 {
-                    confirmText: 'Transfer Sekarang',
+                    confirmText: 'Bayar Sekarang',
                     cancelText: 'Batalkan',
                     title: 'Konfirmasi Pembayaran',
                     type: 'warning'
@@ -400,24 +404,73 @@ const CheckoutModalScreen = () => {
                 setIsProcessing(true);
                 
                 try {
-                    const paymentSuccess = await processPayment();
+                    const paymentResult = await processPayment();
                     
-                    if (paymentSuccess) {
+                    if (paymentResult.success) {
                         setIsProcessing(false);
+                        
+                        // ✅ PERBAIKAN: Buat data order yang lengkap dan konsisten
+                        const orderData = {
+                            orderId: paymentResult.orderId,
+                            total: total, // ✅ PASTIKAN PAKAI TOTAL YANG BENAR
+                            subtotal: subtotal,
+                            shippingFee: shippingFee,
+                            tax: tax,
+                            discount: discount,
+                            items: checkoutItems,
+                            customerInfo: {
+                                firstName,
+                                lastName,
+                                email,
+                                phone
+                            },
+                            shippingMethod: shippingMethod,
+                            paymentMethod: paymentMethod,
+                            estimatedDelivery: getShippingTime(),
+                            timestamp: new Date().toISOString()
+                        };
+
+                        console.log('📦 Data order yang dikirim:', orderData);
+
+                        // ✅ PERBAIKAN: Clear cart setelah checkout berhasil
+                        try {
+                            await clearCartAfterCheckout();
+                            console.log('✅ Cart cleared after checkout');
+                        } catch (cartError) {
+                            console.warn('⚠️ Gagal clear cart:', cartError);
+                        }
+
+                        // ✅ PERBAIKAN: Navigasi dengan data yang lengkap
                         Alert.alert(
                             '🎉 Pembayaran Berhasil!',
-                            `Terima kasih telah berbelanja!\n\nTotal: $${total.toFixed(2)}\n\nEmail konfirmasi telah dikirim ke ${email}`,
+                            `Terima kasih telah berbelanja!\n\nTotal: $${total.toFixed(2)}\nOrder ID: ${paymentResult.orderId}\n\nEmail konfirmasi telah dikirim ke ${email}`,
                             [
                                 {
-                                    text: 'Lanjutkan Belanja',
-                                    onPress: () => (navigation as any).navigate('CourierTracking', {
-                                        orderId: 'ORD-' + Date.now().toString().slice(-6),
-                                        total: total,
-                                        estimatedTime: '30-45 menit'
-                                    })
+                                    text: 'Lacak Pesanan',
+                                    onPress: () => {
+                                        // ✅ PERBAIKAN: Kirim data yang lengkap ke tracking screen
+                                        navigation.navigate('CourierTracking', {
+                                            order: orderData, // ✅ KIRIM OBJECT ORDER YANG LENGKAP
+                                            orderId: paymentResult.orderId,
+                                            total: total, // ✅ PASTIKAN TOTAL YANG DIKIRIM SAMA
+                                            estimatedTime: getShippingTime(),
+                                            customerName: `${firstName} ${lastName}`,
+                                            items: checkoutItems.map(item => ({
+                                                name: item.product.name,
+                                                quantity: item.quantity,
+                                                price: item.product.price,
+                                                total: item.product.price * item.quantity
+                                            })),
+                                            subtotal: subtotal,
+                                            shippingFee: shippingFee,
+                                            tax: tax,
+                                            discount: discount
+                                        });
+                                    }
                                 },
                             ]
                         );
+
                     }
                 } catch (paymentError: any) {
                     setIsProcessing(false);

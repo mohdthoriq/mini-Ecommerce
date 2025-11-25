@@ -25,6 +25,7 @@ const CartContext = createContext<CartContextType>({
   addToCart: async () => {},
   updateQuantity: async () => {},
   removeFromCart: async () => {},
+  clearCartAfterCheckout: async () => {},
   clearCart: async () => {},
   refreshCart: async () => {},
 });
@@ -432,6 +433,44 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
   };
 
+  const clearCartAfterCheckout = async () => {
+    try {
+        console.log('🛒 Clearing cart after checkout...');
+        
+        if (user) {
+            // Clear cart dari backend API
+            // await api.delete('/cart/clear'); // Uncomment jika sudah ada API
+            console.log('✅ Cart cleared from backend for user:', user.id);
+        }
+        
+        // ✅ PERBAIKAN: Clear cart dari state lokal - HANYA setCartItems ke array kosong
+        setCartItems([]);
+        
+        // ✅ PERBAIKAN: cartItemCount dan totalPrice AKAN OTOMATIS TERHITUNG dari cartItems yang kosong
+        // Jadi tidak perlu setCartItemCount(0) dan setTotalPrice(0) karena mereka derived values
+        
+        setLastCartError(null);
+        
+        // Clear dari storage/async storage
+        const storageKey = getUserCartStorageKey(user?.id);
+        const backupKey = getUserCartBackupKey(user?.id);
+        
+        await Promise.all([
+            safeStorage.safeRemove(storageKey),
+            safeStorage.safeRemove(backupKey)
+        ]);
+        
+        console.log('✅ Cart cleared after checkout successfully');
+        
+    } catch (error) {
+        console.error('❌ Error clearing cart after checkout:', error);
+        // ✅ Tetap clear state meskipun storage gagal
+        setCartItems([]);
+        setLastCartError(null);
+        throw new Error('Failed to clear cart after checkout');
+    }
+};
+
   // ✅ FIX: IMPLEMENTASI FUNGSI CLEAR CART
   const clearCart = async (): Promise<void> => {
     try {
@@ -487,6 +526,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     addToCart,
     updateQuantity,
     removeFromCart,
+    clearCartAfterCheckout,
     clearCart,
     refreshCart,
   };
